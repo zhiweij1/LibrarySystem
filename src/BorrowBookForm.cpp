@@ -1,0 +1,207 @@
+#include "BorrowBookForm.h"
+#include "ui_BorrowBookForm.h"
+
+#include <QMessageBox>
+#include <QVBoxLayout>
+
+BorrowBookForm::BorrowBookForm(QWidget *Parent)
+    : QWidget(Parent), UI(new Ui::BorrowBookForm) {
+  UI->setupUi(this);
+  connect(UI->ReaderNumButton, &QPushButton::clicked, this,
+          &BorrowBookForm::handleReaderNumberButtonClicked);
+  connect(UI->SubmitButton, &QPushButton::clicked, this,
+          &BorrowBookForm::handleSubmitButtonClicked);
+  connect(UI->BookNumAddButton, &QPushButton::clicked, this,
+          &BorrowBookForm::handleBookAddButtonClicked);
+
+  connect(UI->ReaderNumLineEdit, &QLineEdit::returnPressed, this,
+          &BorrowBookForm::handleReaderNumberButtonClicked);
+  connect(UI->BookNumLineEdit, &QLineEdit::returnPressed, this,
+          &BorrowBookForm::handleBookAddButtonClicked);
+
+  UI->BookListTableWidget->setColumnCount(6);
+  UI->BookListTableWidget->setHorizontalHeaderLabels(
+      {"封面", "条码号", "书名", "作者", "出版社", "操作"});
+  UI->BookListTableWidget->setColumnWidth(0, 100); // 封面
+  UI->BookListTableWidget->setColumnWidth(1, 200); // 条码号
+  UI->BookListTableWidget->setColumnWidth(2, 200); // 书名
+  UI->BookListTableWidget->setColumnWidth(3, 200); // 作者
+  UI->BookListTableWidget->setColumnWidth(4, 200); // 出版社
+  UI->BookListTableWidget->horizontalHeader()->setSectionResizeMode(
+      5, QHeaderView::Stretch);
+  UI->BookListTableWidget->verticalHeader()->setDefaultSectionSize(100);
+}
+
+BorrowBookForm::~BorrowBookForm() { delete UI; }
+
+void BorrowBookForm::handleBookAddButtonClicked() {
+  QString Barcode = UI->BookNumLineEdit->text().trimmed();
+  auto BookDataErrOr =
+      LibrarySystem::getInstance().getBookDataByBarcode(Barcode);
+
+  if (!BookDataErrOr) {
+    QMessageBox::warning(this, "warning", "未找到该编号的书籍");
+    return;
+  }
+  const auto &BookData = BookDataErrOr.getValue();
+
+  if (BookData.second.Status == BookCopy::BookStatus::BS_Borrowed) {
+    QMessageBox::warning(
+        this, "warning",
+        QString("条码 [%1] 对应的书籍目前处于‘借出’状态").arg(Barcode));
+    return;
+  }
+  if (BookData.second.Status == BookCopy::BookStatus::BS_Lost) {
+    QMessageBox::warning(
+        this, "warning",
+        QString("条码 [%1] 对应的书籍目前处于‘遗失’状态").arg(Barcode));
+    return;
+  }
+  for (int Idx = 0; Idx < UI->BookListTableWidget->rowCount(); ++Idx) {
+    if (UI->BookListTableWidget->item(Idx, 1)->text() == Barcode) {
+      QMessageBox::warning(
+          this, "warning",
+          QString("条码 [%1] 对应的书籍已在待借列表中").arg(Barcode));
+      return;
+    }
+  }
+
+  int Row = UI->BookListTableWidget->rowCount();
+  UI->BookListTableWidget->insertRow(Row);
+
+  // add book cover
+  QLabel *ImgLabel = new QLabel();
+  QString FullPath =
+      QCoreApplication::applicationDirPath() + "/" + BookData.first.CoverPath;
+  QPixmap Pix(FullPath);
+  ImgLabel->setPixmap(
+      Pix.scaled(60, 80, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+  ImgLabel->setAlignment(Qt::AlignCenter);
+  UI->BookListTableWidget->setCellWidget(Row, 0, ImgLabel);
+
+  // add book info
+  QTableWidgetItem *BarcodeItem = new QTableWidgetItem(Barcode);
+  BarcodeItem->setData(Qt::UserRole, BookData.second.ID);
+  UI->BookListTableWidget->setItem(Row, 1, BarcodeItem);
+  UI->BookListTableWidget->setItem(Row, 2,
+                                   new QTableWidgetItem(BookData.first.Title));
+  UI->BookListTableWidget->setItem(Row, 3,
+                                   new QTableWidgetItem(BookData.first.Author));
+  UI->BookListTableWidget->setItem(
+      Row, 4, new QTableWidgetItem(BookData.first.Publisher));
+
+  // add delete button
+  QPushButton *DelBtn = new QPushButton("删除");
+  DelBtn->setStyleSheet("color: red;");
+  UI->BookListTableWidget->setCellWidget(Row, 5, DelBtn);
+
+  // bind the delete operation
+  connect(DelBtn, &QPushButton::clicked, [this, DelBtn]() {
+    int Row = UI->BookListTableWidget->indexAt(DelBtn->pos()).row();
+    UI->BookListTableWidget->removeRow(Row);
+  });
+
+  UI->BookNumLineEdit->clear();
+  qInfo() << QString("添加条码 [%1] 对应的书籍成功").arg(Barcode);
+}
+
+void BorrowBookForm::handleReaderNumberButtonClicked() {
+  QString CardNumber = UI->ReaderNumLineEdit->text().trimmed();
+  if (CardNumber.isEmpty())
+    return;
+
+  auto ReaderErrOr =
+      LibrarySystem::getInstance().getReaderByCardNumber(CardNumber);
+
+  if (!ReaderErrOr) {
+    QMessageBox::warning(this, "warning", "未找到该编号的读者");
+    UI->ReaderInfoLabel->setText("未选择读者");
+    UI->ReaderInfoLabel->setStyleSheet("color: red;");
+    return;
+  }
+
+  RdrOpt = ReaderErrOr.getValue();
+  UI->ReaderInfoLabel->setText(
+      QString("姓名：%1\n卡号：%2\n电话：%3")
+          .arg(RdrOpt->Name, RdrOpt->CardNumber, RdrOpt->PhoneNumber));
+}
+
+void BorrowBookForm::handleSubmitButtonClicked() {
+  if (!RdrOpt) {
+    QMessageBox::warning(this, "warning", "请先选择读者");
+    return;
+  }
+  if (UI->BookListTableWidget->rowCount() == 0) {
+    QMessageBox::warning(this, "warning", "请填写书目");
+    return;
+  }
+
+  QDialog ConfirmDlg(this);
+  ConfirmDlg.setWindowTitle("确认借书清单");
+  ConfirmDlg.setMinimumSize(700, 500);
+
+  QVBoxLayout Layout(&ConfirmDlg);
+  Layout.addWidget(new QLabel("<b>确认读者信息：</b>", &ConfirmDlg));
+  Layout.addWidget(new QLabel(UI->ReaderInfoLabel->text(), &ConfirmDlg));
+  Layout.addWidget(new QLabel("<b>确认书籍列表：</b>", &ConfirmDlg));
+
+  QTableWidget ConfirmTable(&ConfirmDlg);
+  ConfirmTable.setColumnCount(5);
+  ConfirmTable.setHorizontalHeaderLabels(
+      {"封面", "条码号", "书名", "作者", "出版社"});
+  ConfirmTable.horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+  ConfirmTable.verticalHeader()->setDefaultSectionSize(100);
+
+  int RowCount = UI->BookListTableWidget->rowCount();
+  ConfirmTable.setRowCount(RowCount);
+
+  // clone data
+  for (int Row = 0; Row < RowCount; ++Row) {
+    if (auto *OldImg = qobject_cast<QLabel *>(
+            UI->BookListTableWidget->cellWidget(Row, 0))) {
+      QLabel *NewImg = new QLabel(&ConfirmTable);
+      NewImg->setPixmap(OldImg->pixmap().scaled(60, 80, Qt::KeepAspectRatio,
+                                                Qt::SmoothTransformation));
+      NewImg->setAlignment(Qt::AlignCenter);
+      ConfirmTable.setCellWidget(Row, 0, NewImg);
+    }
+
+    for (int Col = 1; Col < 5; ++Col) {
+      if (auto *OldItem = UI->BookListTableWidget->item(Row, Col)) {
+        // 只复制需要被显示的内容，data不需要复制
+        ConfirmTable.setItem(Row, Col, new QTableWidgetItem(OldItem->text()));
+      }
+    }
+  }
+  Layout.addWidget(&ConfirmTable);
+
+  QDialogButtonBox BtnBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel,
+                          &ConfirmDlg);
+  Layout.addWidget(&BtnBox);
+  connect(&BtnBox, &QDialogButtonBox::accepted, &ConfirmDlg, &QDialog::accept);
+  connect(&BtnBox, &QDialogButtonBox::rejected, &ConfirmDlg, &QDialog::reject);
+
+  if (ConfirmDlg.exec() == QDialog::Accepted) {
+    QVector<int> CopyIDs;
+    CopyIDs.reserve(RowCount);
+    for (int Row = 0; Row < RowCount; ++Row) {
+      // 直接从原始表格里拿ID
+      CopyIDs.append(
+          UI->BookListTableWidget->item(Row, 1)->data(Qt::UserRole).toInt());
+    }
+
+    auto ErrMsg = LibrarySystem::getInstance().borrowBooks(RdrOpt->ID, CopyIDs);
+
+    if (!ErrMsg) {
+      QMessageBox::critical(this, "critical", "失败: " + ErrMsg.getErrMsg());
+      qCritical() << "失败: " + ErrMsg.getErrMsg();
+    } else {
+      QMessageBox::information(this, "information", "借书手续已全部办理完成");
+      qInfo() << "借书手续已全部办理完成";
+      UI->BookListTableWidget->setRowCount(0);
+      UI->ReaderNumLineEdit->clear();
+      UI->ReaderInfoLabel->setText("未选择读者");
+      RdrOpt = std::nullopt;
+    }
+  }
+}

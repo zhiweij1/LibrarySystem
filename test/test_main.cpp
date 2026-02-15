@@ -1,0 +1,208 @@
+#include "../src/CSVParser.h"
+#include "../src/Library.h"
+
+#include <QSignalSpy>
+#include <QSqlDatabase>
+#include <QSqlQuery>
+#include <QtTest>
+
+class LibrarySystemTest : public QObject {
+  Q_OBJECT
+
+private slots:
+  void initTestCase() {
+    bool OK = LibrarySystem::getInstance().init(":memory:");
+    QVERIFY2(OK, "数据库初始化失败");
+  }
+
+  void testErrorOrLogic() {
+    ErrorOr<int> Success(100);
+    QVERIFY(Success.getErrCode() == ErrorCode::Success);
+    QVERIFY(static_cast<bool>(Success) == true);
+    QCOMPARE(Success.getValue(), 100);
+
+    ErrorOr<int> Failure =
+        ErrorOr<int>(ErrorCode::DatabaseError, "Error Message");
+    QVERIFY(Failure.getErrCode() == ErrorCode::DatabaseError);
+    QVERIFY(static_cast<bool>(Failure) == false);
+    QCOMPARE(Failure.getErrMsg(), QString("Error Message"));
+  }
+
+  void testBorrowBooksRegression() {
+    auto Res =
+        LibrarySystem::getInstance().getReaderByCardNumber("NON_EXIST_999");
+    QVERIFY2(!Res, "不存在的卡号不应返回有效读者");
+  }
+
+  void testCSVParserLogic() {
+    CSVParser Parser;
+    auto Res = Parser.parse("non_existent_file.csv");
+    QVERIFY2(!Res, "解析不存在的文件应该返回错误状态");
+  }
+
+  void testCSVCountMismatch() {
+    QTemporaryFile File;
+    if (File.open()) {
+      QTextStream Out(&File);
+      Out << "ID,Title,Author,Pub,Count,Cat,Barcodes\n";
+      // 册数写 2，但条码只给 1 个，预期触发 ValidationError
+      Out << "1,Test,Author,Press,2,B1,CODE_001\n";
+      File.close();
+    }
+
+    CSVParser Parser;
+    auto Res = Parser.parse(File.fileName());
+    QVERIFY(!Res);
+    QCOMPARE(Res.getErrCode(), ErrorCode::ValidationError);
+    QVERIFY(Res.getErrMsg().contains("不符"));
+  }
+
+  void testBorrowTransactionRollback() {
+    // 假设 ID 1 是存在的，ID 99999 是不存在的
+    QVector<int> Ids = {1, 99999};
+
+    // 执行批量借书
+    auto Res = LibrarySystem::getInstance().borrowBooks(1, Ids);
+
+    // 预期结果：因为 99999 不存在，borrowBook 会失败，触发事务回滚
+    QVERIFY(!Res);
+
+    // 验证回滚：ID 为 1 的书状态应该还是 0 (BS_InLibrary)，而不是 1
+    // (BS_Borrowed)
+    QSqlQuery Query;
+    Query.exec("SELECT status FROM bookcopy WHERE id = 1");
+    if (Query.next()) {
+      QCOMPARE(Query.value(0).toInt(), 0);
+    }
+  }
+
+  void testQueryBooksFuzzySearch() {
+    // 插入测试数据
+    QSqlQuery Query;
+    Query.exec("INSERT INTO bookinfo (title) VALUES ('C++ Primer')");
+    int InfoId = Query.lastInsertId().toInt();
+    Query.exec(
+        QString(
+            "INSERT INTO bookcopy (info_id, barcode) VALUES (%1, 'ABC-123')")
+            .arg(InfoId));
+
+    // 只搜标题的一部分
+    auto Res = LibrarySystem::getInstance().queryBooks("", "Primer", "", "");
+    QVERIFY(Res);
+    QVERIFY(Res.getValue().size() >= 1);
+    QCOMPARE(Res.getValue()[0].Info.Title, QString("C++ Primer"));
+  }
+
+  void testNormalBorrowProcess() {
+    // 1. 准备环境：清理数据并插入一个测试读者和一本书
+    QSqlQuery Query;
+    Query.exec("DELETE FROM borrow_record");
+    Query.exec("DELETE FROM bookcopy");
+    Query.exec(
+        "INSERT INTO reader (name, card_number) VALUES ('测试员', 'CARD_001')");
+    int ReaderId = Query.lastInsertId().toInt();
+
+    Query.exec("INSERT INTO bookinfo (title) VALUES ('单元测试艺术')");
+    int InfoId = Query.lastInsertId().toInt();
+    Query.exec(QString("INSERT INTO bookcopy (info_id, barcode, status) VALUES "
+                       "(%1, 'BC_001', 0)")
+                   .arg(InfoId));
+    int CopyId = Query.lastInsertId().toInt();
+
+    // 2. 执行正常借书动作
+    auto Res = LibrarySystem::getInstance().borrowBooks(ReaderId, {CopyId});
+
+    // 验证 A：逻辑层返回成功
+    QVERIFY2(Res, Res.getErrMsg().toUtf8().constData());
+
+    // 3. 数据库验证（最关键的一步）
+    // 验证 B：书籍状态是否真的变成了“已借出”(1)
+    Query.prepare("SELECT status FROM bookcopy WHERE id = :id");
+    Query.bindValue(":id", CopyId);
+    Query.exec();
+    Query.next();
+    QCOMPARE(Query.value(0).toInt(), 1); // 1 代表 BookCopy::BS_Borrowed
+
+    // 验证 C：借阅记录表是否真的多了一条数据
+    Query.prepare("SELECT COUNT(*) FROM borrow_record WHERE reader_id = :rid "
+                  "AND copy_id = :cid");
+    Query.bindValue(":rid", ReaderId);
+    Query.bindValue(":cid", CopyId);
+    Query.exec();
+    Query.next();
+    QCOMPARE(Query.value(0).toInt(), 1);
+  }
+
+  void testNormalReturnProcess() {
+    QSqlQuery Query;
+    // 1. 模拟环境：先插入一条“已借出”的记录
+    // 假设 reader_id=1, copy_id=1, 且该副本当前状态为 1 (BS_Borrowed)
+    Query.exec("INSERT INTO reader (id, name, card_number) VALUES (10, "
+               "'还书人', 'CARD_10')");
+    Query.exec(
+        "INSERT INTO bookinfo (id, title) VALUES (10, '深入理解计算机系统')");
+    Query.exec("INSERT INTO bookcopy (id, info_id, barcode, status) VALUES "
+               "(10, 10, 'BC_10', 1)"); // 状态为1
+    Query.exec("INSERT INTO borrow_record (id, reader_id, copy_id, "
+               "borrow_date, due_date) "
+               "VALUES (100, 10, 10, date('now', '-10 days'), date('now', '+20 "
+               "days'))");
+
+    // 2. 执行还书
+    auto Res = LibrarySystem::getInstance().returnBooks({100}); // 传入记录ID
+    QVERIFY2(Res, Res.getErrMsg().toUtf8().constData());
+
+    // 3. 验证数据库状态
+    Query.exec("SELECT status FROM bookcopy WHERE id = 10");
+    Query.next();
+    QCOMPARE(Query.value(0).toInt(), 0);
+
+    Query.exec("SELECT return_date FROM borrow_record WHERE id = 100");
+    Query.next();
+    QString Today = QDate::currentDate().toString("yyyy-MM-dd");
+    QCOMPARE(Query.value(0).toString(), Today); // 验证还书日期确实是今天
+  }
+
+  void testNormalRenewProcess() {
+    QSqlQuery Query;
+
+    // 1. 准备初始数据
+    // 使用 QDate 生成一个标准的日期字符串，避免硬编码格式错误
+    QDate StartDate(2023, 12, 15);
+    QString OriginalDueDateStr = StartDate.toString("yyyy-MM-dd");
+
+    // 插入一条借阅记录，到期时间为 2023-12-15
+    Query.exec(
+        QString("INSERT INTO borrow_record (id, reader_id, copy_id, due_date) "
+                "VALUES (200, 10, 10, '%1')")
+            .arg(OriginalDueDateStr));
+
+    // 2. 执行续借逻辑 (内部调用了 SQLite 的 date(due_date, '+30 days'))
+    auto Res = LibrarySystem::getInstance().renewBooks({200});
+    QVERIFY2(Res, Res.getErrMsg().toUtf8().constData());
+
+    // 3. 验证数据库中的新日期
+    Query.exec("SELECT due_date FROM borrow_record WHERE id = 200");
+    Query.next();
+    QString DBDateStr = Query.value(0).toString();
+    QDate ActualDate = QDate::fromString(DBDateStr, "yyyy-MM-dd");
+
+    // 4. 精确匹配：计算 C++ 端预期的日期 (12月15日 + 30天 = 次年1月14日)
+    QDate ExpectedDate = StartDate.addDays(30);
+
+    // 验证：数据库算出来的日期必须和 QDate 算出来的一模一样
+    QCOMPARE(ActualDate, ExpectedDate);
+  }
+
+  void testReturnInvalidRecord() {
+    // 传入一个不存在的记录ID：999999
+    auto Res = LibrarySystem::getInstance().returnBooks({999999});
+
+    // 预期：应该返回失败，而不是假装成功
+    QVERIFY(!Res);
+    QCOMPARE(Res.getErrCode(), ErrorCode::NotFound);
+  }
+};
+
+QTEST_GUILESS_MAIN(LibrarySystemTest)
+#include "test_main.moc"

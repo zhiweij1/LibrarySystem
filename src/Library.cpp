@@ -1,0 +1,515 @@
+#include "Library.h"
+
+#include "CSVParser.h"
+
+#include <QCoreApplication>
+#include <QDebug>
+#include <QDir>
+#include <QSqlError>
+#include <QSqlQuery>
+
+ErrorOr<bool> LibrarySystem::isBarcodeExists(const QString &Barcode) {
+  QSqlQuery Query(DB);
+  Query.prepare("SELECT 1 FROM bookcopy WHERE barcode = :code LIMIT 1");
+  Query.bindValue(":code", Barcode);
+  if (!Query.exec())
+    return {ErrorCode::DatabaseError, "查询失败: " + Query.lastError().text()};
+  return Query.next();
+}
+
+ErrorOr<void> LibrarySystem::importFromCSV(const QString &FilePath) {
+  CSVParser Parser;
+  // 1. 调用新接口解析 CSV，获取详细报错
+  auto ParseRes = Parser.parse(FilePath);
+  if (!ParseRes) {
+    return ParseRes;
+  }
+
+  QString CoverTargetDir = QCoreApplication::applicationDirPath() + "/covers/";
+  QDir().mkpath(CoverTargetDir);
+
+  // 2. 开启事务
+  if (!DB.transaction()) {
+    return {ErrorCode::DatabaseError, "事务启动失败: " + DB.lastError().text()};
+  }
+
+  QSqlQuery Query(DB);
+  for (const auto &Data : std::as_const(Parser.Results)) {
+    // 拼接封面路径
+    QString SourcePath =
+        QFileInfo(FilePath).absolutePath() + "/photos/" + Data.CSVID + ".jpg";
+    QString TargetPath = CoverTargetDir + Data.CSVID + ".jpg";
+    QString RelativePath = "covers/" + Data.CSVID + ".jpg";
+
+    // 如果目标文件已存在，copy 会失败，建议先删除或检查
+    if (QFile::exists(SourcePath)) {
+      if (QFile::exists(TargetPath))
+        QFile::remove(TargetPath);
+      QFile::copy(SourcePath, TargetPath);
+    }
+
+    // 3. 插入书籍信息 (BookInfo)
+    Query.prepare("INSERT INTO bookinfo (title, author, publisher, cover_path, "
+                  "category_id) "
+                  "VALUES (:t, :a, :p, :c, :cat)");
+    Query.bindValue(":t", Data.Title);
+    Query.bindValue(":a", Data.Author);
+    Query.bindValue(":p", Data.Publisher);
+    Query.bindValue(":c", RelativePath);
+    Query.bindValue(":cat", Data.Category);
+
+    if (!Query.exec()) {
+      DB.rollback();
+      return {ErrorCode::DatabaseError,
+              "导入失败: " + Query.lastError().text()};
+    }
+
+    int InfoID = Query.lastInsertId().toInt();
+
+    // 4. 插入书籍副本 (BookCopy)
+    for (const QString &Barcode : Data.Barcodes) {
+      Query.prepare("INSERT INTO bookcopy (info_id, barcode, status) "
+                    "VALUES (:iid, :bc, 0)");
+      Query.bindValue(":iid", InfoID);
+      Query.bindValue(":bc", Barcode);
+
+      if (!Query.exec()) {
+        DB.rollback();
+        return {ErrorCode::DatabaseError,
+                "导入失败: " + Query.lastError().text()};
+      }
+    }
+  }
+
+  // 5. 提交事务
+  if (DB.commit()) {
+    return {};
+  }
+  DB.rollback();
+  return {ErrorCode::DatabaseError, "提交失败: " + DB.lastError().text()};
+}
+
+ErrorOr<void> LibrarySystem::init(const QString &DBPath) {
+  if (QSqlDatabase::contains("qt_sql_default_connection")) {
+    DB = QSqlDatabase::database("qt_sql_default_connection");
+  } else {
+    DB = QSqlDatabase::addDatabase("QSQLITE");
+  }
+
+  DB.setDatabaseName(DBPath);
+
+  if (!DB.open())
+    return {ErrorCode::DatabaseError,
+            "无法打开数据库: " + DB.lastError().text()};
+
+  QSqlQuery Pragma(DB);
+  Pragma.exec("PRAGMA foreign_keys = ON;");
+
+  QSqlQuery Query(DB);
+
+  // BookInfo
+  bool OK = Query.exec("CREATE TABLE IF NOT EXISTS bookinfo ("
+                       "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                       "title TEXT NOT NULL,"
+                       "author TEXT,"
+                       "publisher TEXT,"
+                       "category_id TEXT," // CLC
+                       "cover_path TEXT"
+                       ")");
+
+  // BookCopy
+  OK &= Query.exec(
+      QString("CREATE TABLE IF NOT EXISTS bookcopy ("
+              "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+              "info_id INTEGER,"
+              "barcode TEXT UNIQUE,"
+              "status INTEGER DEFAULT %1,"
+              "FOREIGN KEY(info_id) REFERENCES bookinfo(id) ON DELETE CASCADE"
+              ")")
+          .arg(BookCopy::BookStatus::BS_InLibrary));
+
+  // Reader
+  OK &= Query.exec(QString("CREATE TABLE IF NOT EXISTS reader ("
+                           "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                           "name TEXT NOT NULL,"
+                           "card_number TEXT UNIQUE,"
+                           "phone TEXT,"
+                           "is_inactive INTEGER DEFAULT %1)")
+                       .arg(RS_Active));
+
+  // BorrowRecord
+  OK &= Query.exec("CREATE TABLE IF NOT EXISTS borrow_record ("
+                   "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                   "reader_id INTEGER,"
+                   "copy_id INTEGER,"
+                   "borrow_date DATE DEFAULT (date('now')),"
+                   "due_date DATE,"
+                   "return_date DATE,"
+                   "FOREIGN KEY(reader_id) REFERENCES reader(id),"
+                   "FOREIGN KEY(copy_id) REFERENCES bookcopy(id)"
+                   ")");
+
+  if (!OK)
+    return {ErrorCode::DatabaseError, "建表失败: " + Query.lastError().text()};
+
+  return {};
+}
+
+ErrorOr<std::pair<BookInfo, BookCopy>>
+LibrarySystem::getBookDataByBarcode(const QString &Barcode) {
+  QSqlQuery Query(DB);
+  Query.prepare(R"(
+        SELECT 
+            bi.id, bi.title, bi.author, bi.publisher, bi.cover_path,
+            bc.id, bc.info_id, bc.barcode, bc.status
+        FROM bookcopy bc
+        JOIN bookinfo bi ON bc.info_id = bi.id
+        WHERE bc.barcode = :barcode
+    )");
+
+  Query.bindValue(":barcode", Barcode);
+
+  if (!Query.exec())
+    return {ErrorCode::DatabaseError,
+            "查询书籍失败:" + Query.lastError().text()};
+
+  if (Query.next()) {
+    BookInfo Info;
+    BookCopy Copy;
+
+    Info.ID = Query.value(0).toInt();
+    Info.Title = Query.value(1).toString();
+    Info.Author = Query.value(2).toString();
+    Info.Publisher = Query.value(3).toString();
+    Info.CoverPath = Query.value(4).toString();
+
+    Copy.ID = Query.value(5).toInt();
+    Copy.InfoID = Query.value(6).toInt();
+    Copy.Barcode = Query.value(7).toString();
+    Copy.Status = static_cast<BookCopy::BookStatus>(Query.value(8).toInt());
+
+    return std::make_pair(Info, Copy);
+  }
+
+  return {ErrorCode::NotFound, "条码不存在: " + Barcode};
+}
+
+ErrorOr<Reader>
+LibrarySystem::getReaderByCardNumber(const QString &CardNumber) {
+  QSqlQuery Query(DB);
+  Query.prepare("SELECT id, name, card_number, phone FROM reader WHERE "
+                "card_number = :card");
+  Query.bindValue(":card", CardNumber);
+
+  if (Query.exec() && Query.next()) {
+    Reader Rdr;
+    Rdr.ID = Query.value("id").toInt();
+    Rdr.Name = Query.value("name").toString();
+    Rdr.CardNumber = Query.value("card_number").toString();
+    Rdr.PhoneNumber = Query.value("phone").toString();
+    return Rdr;
+  }
+  return {ErrorCode::NotFound, "读者不存在: " + CardNumber};
+}
+
+ErrorOr<void> LibrarySystem::borrowBook(QSqlQuery &Query, const int ReaderID,
+                                        const int CopyID) {
+  Query.prepare(
+      "INSERT INTO borrow_record (reader_id, copy_id, borrow_date, due_date) "
+      "VALUES (:rid, :cid, date('now'), date('now', '+30 days'))");
+  Query.bindValue(":rid", ReaderID);
+  Query.bindValue(":cid", CopyID);
+
+  if (!Query.exec())
+    return {ErrorCode::DatabaseError,
+            "写入借阅记录失败: " + Query.lastError().text()};
+
+  Query.prepare("UPDATE bookcopy SET status = :status WHERE id = :id");
+  Query.bindValue(":status", BookCopy::BS_Borrowed);
+  Query.bindValue(":id", CopyID);
+
+  if (!Query.exec())
+    return {ErrorCode::DatabaseError,
+            "更新书籍状态失败: " + Query.lastError().text()};
+  return {};
+}
+
+ErrorOr<void> LibrarySystem::borrowBooks(int ReaderID,
+                                         const QVector<int> &CopyIDs) {
+  if (CopyIDs.isEmpty())
+    return {ErrorCode::ValidationError, "未选择任何书籍"};
+
+  if (!DB.transaction()) {
+    return {ErrorCode::DatabaseError, "事务启动失败: " + DB.lastError().text()};
+  }
+
+  QSqlQuery Query(DB);
+  for (int CID : CopyIDs) {
+    auto Res = borrowBook(Query, ReaderID, CID);
+    if (!Res) {
+      DB.rollback();
+      return Res;
+    }
+  }
+
+  if (DB.commit())
+    return {};
+  DB.rollback();
+  return {ErrorCode::DatabaseError,
+          "提交借书事务失败: " + DB.lastError().text()};
+}
+
+ErrorOr<QVector<BorrowDetailType>>
+LibrarySystem::getBorrowingDetailsByReader(int ReaderId) {
+  QVector<BorrowDetailType> Results;
+  QSqlQuery Query(DB);
+
+  QString Sql =
+      "SELECT "
+      "br.id, br.reader_id, br.copy_id, br.borrow_date, br.due_date, "
+      "br.return_date, "                                         // br (0-5)
+      "bc.id, bc.info_id, bc.barcode, bc.status, "               // bc (6-9)
+      "bi.id, bi.title, bi.author, bi.publisher, bi.cover_path " // bi (10-14)
+      "FROM borrow_record br "
+      "JOIN bookcopy bc ON br.copy_id = bc.id "
+      "JOIN bookinfo bi ON bc.info_id = bi.id "
+      "WHERE br.reader_id = :rid AND br.return_date IS NULL"; // 只查未归还的
+
+  Query.prepare(Sql);
+  Query.bindValue(":rid", ReaderId);
+
+  if (Query.exec()) {
+    while (Query.next()) {
+      BorrowDetailType Detail;
+
+      // fill BorrowRecord (0-5)
+      Detail.Record.ID = Query.value(0).toInt();
+      Detail.Record.ReaderId = Query.value(1).toInt();
+      Detail.Record.CopyId = Query.value(2).toInt();
+      Detail.Record.BorrowDate = Query.value(3).toDateTime();
+      Detail.Record.DueDate = Query.value(4).toDateTime();
+      Detail.Record.ReturnDate = Query.value(5).toDateTime();
+
+      // fill BookCopy (6-9)
+      Detail.Copy.ID = Query.value(6).toInt();
+      Detail.Copy.InfoID = Query.value(7).toInt();
+      Detail.Copy.Barcode = Query.value(8).toString();
+      Detail.Copy.Status =
+          static_cast<BookCopy::BookStatus>(Query.value(9).toInt());
+
+      // fill BookInfo (10-14)
+      Detail.Info.ID = Query.value(10).toInt();
+      Detail.Info.Title = Query.value(11).toString();
+      Detail.Info.Author = Query.value(12).toString();
+      Detail.Info.Publisher = Query.value(13).toString();
+      Detail.Info.CoverPath = Query.value(14).toString();
+
+      Results.append(Detail);
+    }
+    return Results;
+  }
+  return {ErrorCode::DatabaseError,
+          "获取读者借阅详情失败: " + Query.lastError().text()};
+}
+
+ErrorOr<void> LibrarySystem::returnBook(QSqlQuery &Query, const int RecordID) {
+  int CopyId = -1;
+
+  // 获取副本ID
+  Query.prepare("SELECT copy_id FROM borrow_record WHERE id = :rid");
+  Query.bindValue(":rid", RecordID);
+  if (!Query.exec() || !Query.next())
+    return {ErrorCode::NotFound, "未找到借阅记录: " + Query.lastError().text()};
+  CopyId = Query.value(0).toInt();
+
+  // 更新归还日期
+  Query.prepare(
+      "UPDATE borrow_record SET return_date = date('now') WHERE id = :rid");
+  Query.bindValue(":rid", RecordID);
+  if (!Query.exec())
+    return {ErrorCode::DatabaseError,
+            "更新归还时间失败: " + Query.lastError().text()};
+
+  // 更新书籍副本状态为 0 (在库)
+  Query.prepare("UPDATE bookcopy SET status = 0 WHERE id = :cid");
+  Query.bindValue(":cid", CopyId);
+  if (!Query.exec())
+    return {ErrorCode::DatabaseError,
+            "恢复书籍在库状态失败: " + Query.lastError().text()};
+
+  return {};
+}
+
+ErrorOr<void> LibrarySystem::returnBooks(const QList<int> &RecordIDs) {
+  if (RecordIDs.isEmpty())
+    return {};
+
+  if (!DB.transaction()) {
+    return {ErrorCode::DatabaseError, "事务启动失败: " + DB.lastError().text()};
+  }
+
+  QSqlQuery Query(DB);
+  for (int RID : RecordIDs) {
+    auto Res = returnBook(Query, RID);
+    if (!Res) {
+      DB.rollback();
+      return Res;
+    }
+  }
+
+  if (DB.commit()) {
+    return {};
+  }
+
+  DB.rollback();
+  return {ErrorCode::DatabaseError,
+          "提交归还事务失败: " + DB.lastError().text()};
+}
+
+ErrorOr<void> LibrarySystem::renewBook(QSqlQuery &Query, const int RecordID) {
+  Query.prepare(
+      "UPDATE borrow_record SET due_date = date(due_date, '+30 days') "
+      "WHERE id = :rid");
+  Query.bindValue(":rid", RecordID);
+
+  if (!Query.exec())
+    return {ErrorCode::DatabaseError,
+            "更新续借时间失败: " + Query.lastError().text()};
+  return {};
+}
+
+ErrorOr<void> LibrarySystem::renewBooks(const QList<int> &RecordIDs) {
+  if (RecordIDs.isEmpty())
+    return {};
+
+  if (!DB.transaction()) {
+    return {ErrorCode::DatabaseError, "事务启动失败: " + DB.lastError().text()};
+  }
+
+  QSqlQuery Query(DB);
+  for (int RID : RecordIDs) {
+    auto Res = renewBook(Query, RID);
+    if (!Res) {
+      DB.rollback();
+      return Res;
+    }
+  }
+
+  if (DB.commit()) {
+    return {};
+  }
+
+  DB.rollback();
+  return {ErrorCode::DatabaseError,
+          "提交续借事务失败: " + DB.lastError().text()};
+}
+
+ErrorOr<QVector<BorrowDetailType>>
+LibrarySystem::queryBooks(const QString &Barcode, const QString &Title,
+                          const QString &Author, const QString &Publisher) {
+  QVector<BorrowDetailType> Results;
+  QSqlQuery Query(DB);
+
+  QString Sql =
+      "SELECT "
+      "bi.id, bi.title, bi.author, bi.publisher, bi.cover_path, " // bi (0-4)
+      "bc.id, bc.barcode, bc.status "                             // bc (5-7)
+      "FROM bookcopy bc "
+      "JOIN bookinfo bi ON bc.info_id = bi.id "
+      "WHERE 1=1 ";
+
+  if (!Barcode.isEmpty())
+    Sql += " AND bc.barcode LIKE :barcode";
+  if (!Title.isEmpty())
+    Sql += " AND bi.title LIKE :title";
+  if (!Author.isEmpty())
+    Sql += " AND bi.author LIKE :author";
+  if (!Publisher.isEmpty())
+    Sql += " AND bi.publisher LIKE :publisher";
+
+  Query.prepare(Sql);
+
+  if (!Barcode.isEmpty())
+    Query.bindValue(":barcode", "%" + Barcode + "%");
+  if (!Title.isEmpty())
+    Query.bindValue(":title", "%" + Title + "%");
+  if (!Author.isEmpty())
+    Query.bindValue(":author", "%" + Author + "%");
+  if (!Publisher.isEmpty())
+    Query.bindValue(":publisher", "%" + Publisher + "%");
+
+  if (Query.exec()) {
+    while (Query.next()) {
+      BorrowDetailType Detail;
+
+      Detail.Info.ID = Query.value(0).toInt();
+      Detail.Info.Title = Query.value(1).toString();
+      Detail.Info.Author = Query.value(2).toString();
+      Detail.Info.Publisher = Query.value(3).toString();
+      Detail.Info.CoverPath = Query.value(4).toString();
+
+      Detail.Copy.ID = Query.value(5).toInt();
+      Detail.Copy.Barcode = Query.value(6).toString();
+      Detail.Copy.Status =
+          static_cast<BookCopy::BookStatus>(Query.value(7).toInt());
+
+      Results.append(Detail);
+    }
+  } else {
+    return {ErrorCode::DatabaseError,
+            "查询执行失败: " + Query.lastError().text()};
+  }
+
+  return Results;
+}
+
+ErrorOr<QSet<QString>>
+LibrarySystem::checkExistingBarcodes(const QSet<QString> &Barcodes) {
+  QSet<QString> Found;
+  if (Barcodes.isEmpty())
+    return Found;
+
+  QStringList Placeholders;
+  for (int Idx = 0; Idx < Barcodes.size(); ++Idx) {
+    Placeholders << "?";
+  }
+
+  QString QueryStr =
+      QString("SELECT barcode FROM bookcopy WHERE barcode IN (%1)")
+          .arg(Placeholders.join(","));
+
+  QSqlQuery Query(DB);
+  Query.prepare(QueryStr);
+
+  int Idx = 0;
+  for (const auto &Code : Barcodes) {
+    Query.bindValue(Idx++, Code);
+  }
+
+  if (Query.exec()) {
+    while (Query.next()) {
+      Found.insert(Query.value(0).toString());
+    }
+  } else {
+    return {ErrorCode::DatabaseError,
+            "批量检查条码失败: " + Query.lastError().text()};
+  }
+  return Found;
+}
+
+ErrorOr<QString> LibrarySystem::getNewReaderCardID() {
+  QSqlQuery Query(DB);
+  if (!Query.exec("SELECT MAX(CAST(card_number AS INTEGER)) FROM reader")) {
+    return {ErrorCode::DatabaseError,
+            "数据库查询失败: " + Query.lastError().text()};
+  }
+
+  int NewID = 1000000;
+  if (Query.next()) {
+    QVariant Value = Query.value(0);
+    if (!Value.isNull()) {
+      NewID = Value.toInt() + 1;
+    }
+  }
+  return QString::number(NewID);
+}
