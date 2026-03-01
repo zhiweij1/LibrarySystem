@@ -37,12 +37,14 @@ void QueryBookForm::handleSearchButtonClicked() {
     return;
   }
 
-  QVector<BorrowDetailType> Results = ResultsErrOr.getValue();
+  QVector<std::pair<BorrowDetailType, Reader>> Results =
+      ResultsErrOr.getValue();
 
   UI->ResultTableWidget->setRowCount(0);
-  UI->ResultTableWidget->setColumnCount(6);
+  UI->ResultTableWidget->setColumnCount(10);
   UI->ResultTableWidget->setHorizontalHeaderLabels(
-      {"封面", "条码", "书名", "作者", "出版社", "状态"});
+      {"封面", "条码", "书名", "作者", "出版社", "状态", "借出日期",
+       "预计归还日期", "读者名字", "读者号"});
 
   UI->ResultTableWidget->setEditTriggers(QAbstractItemView::NoEditTriggers);
   UI->ResultTableWidget->setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -53,8 +55,8 @@ void QueryBookForm::handleSearchButtonClicked() {
     UI->ResultTableWidget->insertRow(Row);
 
     QLabel *ImgLabel = new QLabel();
-    QString FullPath =
-        QCoreApplication::applicationDirPath() + "/" + Item.Info.CoverPath;
+    QString FullPath = QCoreApplication::applicationDirPath() + "/" +
+                       Item.first.Info.CoverPath;
     QPixmap Pix(FullPath);
     if (Pix.isNull()) {
       ImgLabel->setText("无封面");
@@ -64,20 +66,20 @@ void QueryBookForm::handleSearchButtonClicked() {
     }
     ImgLabel->setAlignment(Qt::AlignCenter);
     UI->ResultTableWidget->setCellWidget(Row, 0, ImgLabel);
-    UI->ResultTableWidget->setItem(Row, 1,
-                                   new QTableWidgetItem(Item.Copy.Barcode));
+    UI->ResultTableWidget->setItem(
+        Row, 1, new QTableWidgetItem(Item.first.Copy.Barcode));
     UI->ResultTableWidget->setItem(Row, 2,
-                                   new QTableWidgetItem(Item.Info.Title));
-    UI->ResultTableWidget->setItem(Row, 3,
-                                   new QTableWidgetItem(Item.Info.Author));
-    UI->ResultTableWidget->setItem(Row, 4,
-                                   new QTableWidgetItem(Item.Info.Publisher));
+                                   new QTableWidgetItem(Item.first.Info.Title));
+    UI->ResultTableWidget->setItem(
+        Row, 3, new QTableWidgetItem(Item.first.Info.Author));
+    UI->ResultTableWidget->setItem(
+        Row, 4, new QTableWidgetItem(Item.first.Info.Publisher));
 
     QTableWidgetItem *StatusItem = new QTableWidgetItem();
-    if (Item.Copy.Status == BookCopy::BookStatus::BS_InLibrary) {
+    if (Item.first.Copy.Status == BookCopy::BookStatus::BS_InLibrary) {
       StatusItem->setText("在馆");
       StatusItem->setForeground(Qt::darkGreen);
-    } else if (Item.Copy.Status == BookCopy::BookStatus::BS_Borrowed) {
+    } else if (Item.first.Copy.Status == BookCopy::BookStatus::BS_Borrowed) {
       StatusItem->setText("借出");
       StatusItem->setForeground(Qt::yellow);
     } else {
@@ -86,6 +88,21 @@ void QueryBookForm::handleSearchButtonClicked() {
     }
     StatusItem->setTextAlignment(Qt::AlignCenter);
     UI->ResultTableWidget->setItem(Row, 5, StatusItem);
+
+    if (Item.first.Copy.Status == BookCopy::BookStatus::BS_Borrowed) {
+      UI->ResultTableWidget->setItem(
+          Row, 6,
+          new QTableWidgetItem(
+              Item.first.Record.BorrowDate.toString("yyyy-MM-dd")));
+      UI->ResultTableWidget->setItem(
+          Row, 7,
+          new QTableWidgetItem(
+              Item.first.Record.DueDate.toString("yyyy-MM-dd")));
+      UI->ResultTableWidget->setItem(Row, 8,
+                                     new QTableWidgetItem(Item.second.Name));
+      UI->ResultTableWidget->setItem(
+          Row, 9, new QTableWidgetItem(Item.second.CardNumber));
+    }
   }
 
   UI->ResultTableWidget->horizontalHeader()->setSectionResizeMode(
