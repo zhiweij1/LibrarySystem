@@ -90,7 +90,7 @@ private slots:
     auto Res = LibrarySystem::getInstance().queryBooks("", "Primer", "", "");
     QVERIFY(Res);
     QVERIFY(Res.getValue().size() >= 1);
-    QCOMPARE(Res.getValue()[0].Info.Title, QString("C++ Primer"));
+    QCOMPARE(Res.getValue()[0].first.Info.Title, QString("C++ Primer"));
   }
 
   void testNormalBorrowProcess() {

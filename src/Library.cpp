@@ -404,18 +404,23 @@ ErrorOr<void> LibrarySystem::renewBooks(const QList<int> &RecordIDs) {
           "提交续借事务失败: " + DB.lastError().text()};
 }
 
-ErrorOr<QVector<BorrowDetailType>>
+ErrorOr<QVector<std::pair<BorrowDetailType, Reader>>>
 LibrarySystem::queryBooks(const QString &Barcode, const QString &Title,
                           const QString &Author, const QString &Publisher) {
-  QVector<BorrowDetailType> Results;
+  QVector<std::pair<BorrowDetailType, Reader>> Results;
   QSqlQuery Query(DB);
 
   QString Sql =
       "SELECT "
       "bi.id, bi.title, bi.author, bi.publisher, bi.cover_path, " // bi (0-4)
-      "bc.id, bc.barcode, bc.status "                             // bc (5-7)
-      "FROM bookcopy bc "
-      "JOIN bookinfo bi ON bc.info_id = bi.id "
+      "bc.id, bc.barcode, bc.status, "                            // bc (5-7)
+      "r.id, r.name, r.card_number, r.phone, "                    // r  (8-11)
+      "br.id, br.borrow_date, br.due_date, br.return_date "       // br (12-15)
+      "FROM bookinfo bi "
+      "JOIN bookcopy bc ON bi.id = bc.info_id "
+      "LEFT JOIN borrow_record br ON bc.id = br.copy_id AND br.return_date IS "
+      "NULL "
+      "LEFT JOIN reader r ON br.reader_id = r.id "
       "WHERE 1=1 ";
 
   if (!Barcode.isEmpty())
@@ -438,26 +443,44 @@ LibrarySystem::queryBooks(const QString &Barcode, const QString &Title,
   if (!Publisher.isEmpty())
     Query.bindValue(":publisher", "%" + Publisher + "%");
 
-  if (Query.exec()) {
-    while (Query.next()) {
-      BorrowDetailType Detail;
-
-      Detail.Info.ID = Query.value(0).toInt();
-      Detail.Info.Title = Query.value(1).toString();
-      Detail.Info.Author = Query.value(2).toString();
-      Detail.Info.Publisher = Query.value(3).toString();
-      Detail.Info.CoverPath = Query.value(4).toString();
-
-      Detail.Copy.ID = Query.value(5).toInt();
-      Detail.Copy.Barcode = Query.value(6).toString();
-      Detail.Copy.Status =
-          static_cast<BookCopy::BookStatus>(Query.value(7).toInt());
-
-      Results.append(Detail);
-    }
-  } else {
+  if (!Query.exec()) {
     return {ErrorCode::DatabaseError,
             "查询执行失败: " + Query.lastError().text()};
+  }
+
+  while (Query.next()) {
+    BorrowDetailType Detail;
+    Reader Rdr;
+
+    Detail.Info.ID = Query.value(0).toInt();
+    Detail.Info.Title = Query.value(1).toString();
+    Detail.Info.Author = Query.value(2).toString();
+    Detail.Info.Publisher = Query.value(3).toString();
+    Detail.Info.CoverPath = Query.value(4).toString();
+
+    Detail.Copy.ID = Query.value(5).toInt();
+    Detail.Copy.Barcode = Query.value(6).toString();
+    Detail.Copy.Status =
+        static_cast<BookCopy::BookStatus>(Query.value(7).toInt());
+
+    if (Query.value(8).isNull()) {
+      Rdr.ID = -1;
+      Detail.Record.ID = -1;
+    } else {
+      Rdr.ID = Query.value(8).toInt();
+      Rdr.Name = Query.value(9).toString();
+      Rdr.CardNumber = Query.value(10).toString();
+      Rdr.PhoneNumber = Query.value(11).toString();
+
+      Detail.Record.ID = Query.value(12).toInt();
+      Detail.Record.BorrowDate = Query.value(13).toDateTime();
+      Detail.Record.DueDate = Query.value(14).toDateTime();
+      Detail.Record.ReturnDate = Query.value(15).toDateTime();
+      Detail.Record.ReaderId = Rdr.ID;
+      Detail.Record.CopyId = Detail.Copy.ID;
+    }
+
+    Results.append(std::make_pair(Detail, Rdr));
   }
 
   return Results;

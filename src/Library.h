@@ -113,10 +113,9 @@ public:
   getBookDataByBarcode(const QString &Barcode);
   ErrorOr<Reader> getReaderByCardNumber(const QString &CardNumber);
   ErrorOr<QVector<BorrowDetailType>> getBorrowingDetailsByReader(int ReaderId);
-  ErrorOr<QVector<BorrowDetailType>> queryBooks(const QString &Barcode,
-                                                const QString &Title,
-                                                const QString &Author,
-                                                const QString &Publisher);
+  ErrorOr<QVector<std::pair<BorrowDetailType, Reader>>>
+  queryBooks(const QString &Barcode, const QString &Title,
+             const QString &Author, const QString &Publisher);
   ErrorOr<QSet<QString>> checkExistingBarcodes(const QSet<QString> &Barcodes);
   ErrorOr<QString> getNewReaderCardID();
 
