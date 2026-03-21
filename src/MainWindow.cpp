@@ -11,6 +11,7 @@
 MainWindow::MainWindow(QWidget *Parent)
     : QMainWindow(Parent), UI(new Ui::MainWindow) {
   UI->setupUi(this);
+
   connect(UI->BorrowBookButton, &QPushButton::clicked, this,
           &MainWindow::handleBorrowBookButtonClicked);
   connect(UI->ReturnBookButton, &QPushButton::clicked, this,
@@ -75,13 +76,17 @@ void MainWindow::handleAboutClicked() {
   MsgBox.exec();
 }
 
+static const QString SidebarBtnBase =
+    "QPushButton{background-color:transparent;border:1px solid rgba(0,0,0,0.1);border-radius:6px;"
+    "font-weight:bold;padding:0;width:120px;height:100px;}";
+
 void MainWindow::cleanTheme() {
-  UI->BorrowBookButton->setStyleSheet("");
-  UI->ReturnBookButton->setStyleSheet("");
-  UI->BookStatusQueryButton->setStyleSheet("");
-  UI->RemindReturnButton->setStyleSheet("");
-  UI->EditBookButton->setStyleSheet("");
-  UI->EditReaderButton->setStyleSheet("");
+  UI->BorrowBookButton->setStyleSheet(SidebarBtnBase);
+  UI->ReturnBookButton->setStyleSheet(SidebarBtnBase);
+  UI->BookStatusQueryButton->setStyleSheet(SidebarBtnBase);
+  UI->RemindReturnButton->setStyleSheet(SidebarBtnBase);
+  UI->EditBookButton->setStyleSheet(SidebarBtnBase);
+  UI->EditReaderButton->setStyleSheet(SidebarBtnBase);
 
   UI->ContentFrame->setStyleSheet("");
 }
@@ -90,16 +95,14 @@ void MainWindow::changeTheme(const Theme T, QPushButton *Btn) {
   cleanTheme();
 
   const QString Color = ThemeMap[T];
-  const QString BtnSS = QString(
-      "QPushButton{background-color:%1;border:none;border-radius:6px;"
+  Btn->setStyleSheet(
+      "QPushButton{background-color:" + Color + ";border:1px solid rgba(0,0,0,0.15);border-radius:6px;"
+      "font-weight:bold;padding:0;width:120px;height:100px;}"
+      "QPushButton:hover{border:2px solid rgba(0,0,0,0.2);}"
+      "QPushButton:pressed{background-color:" + Color + ";border:1px solid rgba(0,0,0,0.15);border-radius:6px;"
       "font-weight:bold;}"
-      "QPushButton:hover{border:2px solid rgba(0,0,0,0.1);}"
-      "QPushButton:pressed{background-color:%1;border:none;border-radius:6px;"
-      "font-weight:bold;}"
-      "QPushButton:disabled{background-color:%1;border:none;border-radius:6px;"
-      "font-weight:bold;}")
-      .arg(Color);
-  Btn->setStyleSheet(BtnSS);
+      "QPushButton:disabled{background-color:" + Color + ";border:1px solid rgba(0,0,0,0.15);border-radius:6px;"
+      "font-weight:bold;}");
   const QString FrameSS = "QFrame#ContentFrame{border:5px solid " + Color +
                           ";border-radius:8px;background-color:#F5F5F5;}";
   UI->ContentFrame->setStyleSheet(FrameSS);
