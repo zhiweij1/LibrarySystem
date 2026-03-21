@@ -372,9 +372,9 @@ private slots:
     Query.exec("INSERT INTO reader (id, name, card_number) VALUES "
                "(500, '借书员', 'CARD_500')");
     Query.exec("INSERT INTO bookinfo (id, title) VALUES (500, '遗失的书')");
-    // status = 2 代表 BS_Lost
-    Query.exec("INSERT INTO bookcopy (id, info_id, barcode, status) VALUES "
-               "(500, 500, 'BC_500', 2)");
+    Query.exec(QString("INSERT INTO bookcopy (id, info_id, barcode, status) "
+                        "VALUES (500, 500, 'BC_500', %1)")
+                   .arg(BookCopy::BS_Lost));
 
     // 尝试借出遗失的书
     auto Res = LibrarySystem::getInstance().borrowBooks(500, {500});
@@ -385,7 +385,7 @@ private slots:
     // 验证数据库状态未被改变
     Query.exec("SELECT status FROM bookcopy WHERE id = 500");
     Query.next();
-    QCOMPARE(Query.value(0).toInt(), 2); // 仍然是 BS_Lost
+    QCOMPARE(Query.value(0).toInt(), static_cast<int>(BookCopy::BS_Lost));
   }
 
   void testCannotReturnLostBook() {
@@ -398,9 +398,9 @@ private slots:
     Query.exec("INSERT INTO reader (id, name, card_number) VALUES "
                "(501, '还书员', 'CARD_501')");
     Query.exec("INSERT INTO bookinfo (id, title) VALUES (501, '遗失的书B')");
-    // status = 2 代表 BS_Lost（已遗失但仍有借阅记录）
-    Query.exec("INSERT INTO bookcopy (id, info_id, barcode, status) VALUES "
-               "(501, 501, 'BC_501', 2)");
+    Query.exec(QString("INSERT INTO bookcopy (id, info_id, barcode, status) "
+                        "VALUES (501, 501, 'BC_501', %1)")
+                   .arg(BookCopy::BS_Lost));
     Query.exec("INSERT INTO borrow_record (id, reader_id, copy_id, "
                "borrow_date, due_date) "
                "VALUES (5001, 501, 501, date('now', '-10 days'), date('now', "
@@ -415,7 +415,7 @@ private slots:
     // 验证书籍状态未改变
     Query.exec("SELECT status FROM bookcopy WHERE id = 501");
     Query.next();
-    QCOMPARE(Query.value(0).toInt(), 2); // 仍然是 BS_Lost
+    QCOMPARE(Query.value(0).toInt(), static_cast<int>(BookCopy::BS_Lost));
 
     // 验证借阅记录的 return_date 仍为 NULL
     Query.exec("SELECT return_date FROM borrow_record WHERE id = 5001");
@@ -433,9 +433,9 @@ private slots:
     Query.exec("INSERT INTO reader (id, name, card_number) VALUES "
                "(502, '续借员', 'CARD_502')");
     Query.exec("INSERT INTO bookinfo (id, title) VALUES (502, '遗失的书C')");
-    // status = 2 代表 BS_Lost
-    Query.exec("INSERT INTO bookcopy (id, info_id, barcode, status) VALUES "
-               "(502, 502, 'BC_502', 2)");
+    Query.exec(QString("INSERT INTO bookcopy (id, info_id, barcode, status) "
+                        "VALUES (502, 502, 'BC_502', %1)")
+                   .arg(BookCopy::BS_Lost));
 
     // 在调用 renewBooks 之前先设置固定的 due_date
     QString OriginalDueDate("2025-01-10");
