@@ -93,7 +93,11 @@ void MainWindow::changeTheme(const Theme T, QPushButton *Btn) {
   const QString BtnSS = QString(
       "QPushButton{background-color:%1;border:none;border-radius:6px;"
       "font-weight:bold;}"
-      "QPushButton:hover{border:2px solid rgba(0,0,0,0.1);}")
+      "QPushButton:hover{border:2px solid rgba(0,0,0,0.1);}"
+      "QPushButton:pressed{background-color:%1;border:none;border-radius:6px;"
+      "font-weight:bold;}"
+      "QPushButton:disabled{background-color:%1;border:none;border-radius:6px;"
+      "font-weight:bold;}")
       .arg(Color);
   Btn->setStyleSheet(BtnSS);
   const QString FrameSS = "QFrame#ContentFrame{border:5px solid " + Color +

@@ -95,7 +95,9 @@ void BorrowBookForm::handleBookAddButtonClicked() {
   DelBtn->setStyleSheet(
       "QPushButton{color:#D32F2F;background-color:#FFEBEE;border:1px solid #FFCDD2;"
       "border-radius:4px;padding:5px 15px;}"
-      "QPushButton:hover{background-color:#FFCDD2;border-color:#D32F2F;}");
+      "QPushButton:hover{background-color:#FFCDD2;border-color:#D32F2F;}"
+      "QPushButton:pressed{background-color:#EF9A9A;border-color:#C62828;}"
+      "QPushButton:disabled{color:#BDBDBD;background-color:#FFEBEE;border:1px solid #FFCDD2;}");
   UI->BookListTableWidget->setCellWidget(Row, 5, DelBtn);
 
   // bind the delete operation
