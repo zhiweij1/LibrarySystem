@@ -59,7 +59,7 @@ int main(int argc, char *argv[]) {
   Font.setPointSize(16);
   App.setFont(Font);
 
-  // 全局样式：从外部 QSS 文件加载，便于维护和复用
+  // 全局样式：从 Qt 资源中的 QSS 文件加载，便于维护和复用
   QFile StyleFile(":/styles/app.qss");
   if (StyleFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
     App.setStyleSheet(QString::fromUtf8(StyleFile.readAll()));

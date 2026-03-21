@@ -77,8 +77,10 @@ void MainWindow::handleAboutClicked() {
 }
 
 static const QString SidebarBtnBase =
-    "QPushButton{background-color:transparent;border:1px solid rgba(0,0,0,0.1);border-radius:6px;"
-    "font-weight:bold;padding:0;width:120px;height:100px;}";
+    "QPushButton{background-color:transparent;border:1px solid rgba(0,0,0,0.1);"
+    "border-radius:6px;min-width:120px;min-height:100px;"
+    "font-weight:bold;padding:0;}"
+    "QPushButton:hover{border:1px solid rgba(0,0,0,0.2);}";
 
 void MainWindow::cleanTheme() {
   UI->BorrowBookButton->setStyleSheet(SidebarBtnBase);
@@ -95,14 +97,15 @@ void MainWindow::changeTheme(const Theme T, QPushButton *Btn) {
   cleanTheme();
 
   const QString Color = ThemeMap[T];
-  Btn->setStyleSheet(
-      "QPushButton{background-color:" + Color + ";border:1px solid rgba(0,0,0,0.15);border-radius:6px;"
-      "font-weight:bold;padding:0;width:120px;height:100px;}"
-      "QPushButton:hover{border:2px solid rgba(0,0,0,0.2);}"
-      "QPushButton:pressed{background-color:" + Color + ";border:1px solid rgba(0,0,0,0.15);border-radius:6px;"
-      "font-weight:bold;}"
-      "QPushButton:disabled{background-color:" + Color + ";border:1px solid rgba(0,0,0,0.15);border-radius:6px;"
-      "font-weight:bold;}");
+  const QString ActiveBtnStyle =
+      SidebarBtnBase +
+      "QPushButton{background-color:" + Color +
+      ";border:1px solid rgba(0,0,0,0.15);}"
+      "QPushButton:pressed{background-color:" + Color +
+      ";border:1px solid rgba(0,0,0,0.15);}"
+      "QPushButton:disabled{background-color:" + Color +
+      ";border:1px solid rgba(0,0,0,0.15);}";
+  Btn->setStyleSheet(ActiveBtnStyle);
   const QString FrameSS = "QFrame#ContentFrame{border:5px solid " + Color +
                           ";border-radius:8px;background-color:#F5F5F5;}";
   UI->ContentFrame->setStyleSheet(FrameSS);
