@@ -359,6 +359,101 @@ private slots:
     QCOMPARE(Info.Publisher, QString("测试出版社"));
     QCOMPARE(Info.CoverPath, QString("cover.jpg"));
   }
+  // ===== 遗失书籍操作拦截测试 =====
+
+  void testCannotBorrowLostBook() {
+    QSqlQuery Query;
+    // 准备：插入读者和一本"遗失"状态的书籍
+    Query.exec("DELETE FROM borrow_record");
+    Query.exec("DELETE FROM bookcopy");
+    Query.exec("DELETE FROM bookinfo");
+    Query.exec("DELETE FROM reader");
+
+    Query.exec("INSERT INTO reader (id, name, card_number) VALUES "
+               "(500, '借书员', 'CARD_500')");
+    Query.exec("INSERT INTO bookinfo (id, title) VALUES (500, '遗失的书')");
+    Query.exec(QString("INSERT INTO bookcopy (id, info_id, barcode, status) "
+                        "VALUES (500, 500, 'BC_500', %1)")
+                   .arg(BookCopy::BS_Lost));
+
+    // 尝试借出遗失的书
+    auto Res = LibrarySystem::getInstance().borrowBooks(500, {500});
+    QVERIFY2(!Res, "遗失的书籍不应该能借出");
+    QCOMPARE(Res.getErrCode(), ErrorCode::InvalidStatus);
+    QVERIFY(Res.getErrMsg().contains("遗失"));
+
+    // 验证数据库状态未被改变
+    Query.exec("SELECT status FROM bookcopy WHERE id = 500");
+    Query.next();
+    QCOMPARE(Query.value(0).toInt(), static_cast<int>(BookCopy::BS_Lost));
+  }
+
+  void testCannotReturnLostBook() {
+    QSqlQuery Query;
+    Query.exec("DELETE FROM borrow_record");
+    Query.exec("DELETE FROM bookcopy");
+    Query.exec("DELETE FROM bookinfo");
+    Query.exec("DELETE FROM reader");
+
+    Query.exec("INSERT INTO reader (id, name, card_number) VALUES "
+               "(501, '还书员', 'CARD_501')");
+    Query.exec("INSERT INTO bookinfo (id, title) VALUES (501, '遗失的书B')");
+    Query.exec(QString("INSERT INTO bookcopy (id, info_id, barcode, status) "
+                        "VALUES (501, 501, 'BC_501', %1)")
+                   .arg(BookCopy::BS_Lost));
+    Query.exec("INSERT INTO borrow_record (id, reader_id, copy_id, "
+               "borrow_date, due_date) "
+               "VALUES (5001, 501, 501, date('now', '-10 days'), date('now', "
+               "'-5 days'))");
+
+    // 尝试归还遗失的书
+    auto Res = LibrarySystem::getInstance().returnBooks({5001});
+    QVERIFY2(!Res, "遗失的书籍不应该能直接归还");
+    QCOMPARE(Res.getErrCode(), ErrorCode::InvalidStatus);
+    QVERIFY(Res.getErrMsg().contains("遗失"));
+
+    // 验证书籍状态未改变
+    Query.exec("SELECT status FROM bookcopy WHERE id = 501");
+    Query.next();
+    QCOMPARE(Query.value(0).toInt(), static_cast<int>(BookCopy::BS_Lost));
+
+    // 验证借阅记录的 return_date 仍为 NULL
+    Query.exec("SELECT return_date FROM borrow_record WHERE id = 5001");
+    Query.next();
+    QVERIFY(Query.value(0).isNull());
+  }
+
+  void testCannotRenewLostBook() {
+    QSqlQuery Query;
+    Query.exec("DELETE FROM borrow_record");
+    Query.exec("DELETE FROM bookcopy");
+    Query.exec("DELETE FROM bookinfo");
+    Query.exec("DELETE FROM reader");
+
+    Query.exec("INSERT INTO reader (id, name, card_number) VALUES "
+               "(502, '续借员', 'CARD_502')");
+    Query.exec("INSERT INTO bookinfo (id, title) VALUES (502, '遗失的书C')");
+    Query.exec(QString("INSERT INTO bookcopy (id, info_id, barcode, status) "
+                        "VALUES (502, 502, 'BC_502', %1)")
+                   .arg(BookCopy::BS_Lost));
+
+    // 在调用 renewBooks 之前先设置固定的 due_date
+    QString OriginalDueDate("2025-01-10");
+    Query.exec(QString("INSERT INTO borrow_record (id, reader_id, copy_id, "
+                       "due_date) VALUES (5002, 502, 502, '%1')")
+                   .arg(OriginalDueDate));
+
+    // 尝试续借遗失的书
+    auto Res = LibrarySystem::getInstance().renewBooks({5002});
+    QVERIFY2(!Res, "遗失的书籍不应该能续借");
+    QCOMPARE(Res.getErrCode(), ErrorCode::InvalidStatus);
+    QVERIFY(Res.getErrMsg().contains("遗失"));
+
+    // 验证 due_date 未被修改
+    Query.exec("SELECT due_date FROM borrow_record WHERE id = 5002");
+    Query.next();
+    QCOMPARE(Query.value(0).toString(), OriginalDueDate);
+  }
 };
 
 QTEST_GUILESS_MAIN(LibrarySystemTest)
