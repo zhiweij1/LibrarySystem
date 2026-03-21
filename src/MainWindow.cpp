@@ -89,10 +89,15 @@ void MainWindow::cleanTheme() {
 void MainWindow::changeTheme(const Theme T, QPushButton *Btn) {
   cleanTheme();
 
-  const QString BtnSS = "background-color: " + ThemeMap[T] + ";";
+  const QString Color = ThemeMap[T];
+  const QString BtnSS = QString(
+      "QPushButton{background-color:%1;border:none;border-radius:6px;"
+      "font-weight:bold;}"
+      "QPushButton:hover{border:2px solid rgba(0,0,0,0.1);}")
+      .arg(Color);
   Btn->setStyleSheet(BtnSS);
-  const QString FrameSS = "QFrame#ContentFrame { border: 5px solid " +
-                          ThemeMap[T] + "; border-radius: 8px; }";
+  const QString FrameSS = "QFrame#ContentFrame{border:5px solid " + Color +
+                          ";border-radius:8px;background-color:#F5F5F5;}";
   UI->ContentFrame->setStyleSheet(FrameSS);
 }
 

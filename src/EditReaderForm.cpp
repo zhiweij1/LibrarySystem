@@ -170,7 +170,7 @@ void EditReaderForm::refreshStatusDisplay() {
   int RawStatus = Model->index(Row, 4).data().toInt();
   if (RawStatus != RS_Active && RawStatus != RS_InActive) {
     UI->StatusLabel->setText("未知状态");
-    UI->StatusLabel->setStyleSheet("color: gray;");
+    UI->StatusLabel->setStyleSheet("background:transparent;color:gray;");
     return;
   }
 
@@ -178,11 +178,11 @@ void EditReaderForm::refreshStatusDisplay() {
       static_cast<ReaderStatus>(Model->index(Row, 4).data().toInt());
   if (RS_Active == IsActive) {
     UI->StatusLabel->setText("正常");
-    UI->StatusLabel->setStyleSheet("color: green;");
+    UI->StatusLabel->setStyleSheet("background:transparent;color:green;");
     UI->DeactivateButton->setText("注销");
   } else {
     UI->StatusLabel->setText("已注销");
-    UI->StatusLabel->setStyleSheet("color: red;");
+    UI->StatusLabel->setStyleSheet("background:transparent;color:red;");
     UI->DeactivateButton->setText("激活");
   }
 }

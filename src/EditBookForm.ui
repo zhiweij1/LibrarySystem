@@ -106,6 +106,9 @@
    </item>
    <item>
     <widget class="Line" name="line">
+     <property name="styleSheet">
+      <string notr="true">background-color: #E0E0E0; max-height: 1px;</string>
+     </property>
      <property name="orientation">
       <enum>Qt::Orientation::Horizontal</enum>
      </property>
