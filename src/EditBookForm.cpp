@@ -69,7 +69,9 @@ void EditBookForm::handleQueryButtonClicked() {
   updateBookInfoDisplay(Info, Copy);
 
   // 只有"在馆"或"借出"状态才允许标记遗失
-  UI->MarkLostButton->setEnabled(Copy.Status != BookCopy::BS_Lost);
+  UI->MarkLostButton->setEnabled(
+      Copy.Status == BookCopy::BS_InLibrary ||
+      Copy.Status == BookCopy::BS_Borrowed);
 }
 
 void EditBookForm::handleMarkLostButtonClicked() {
@@ -107,6 +109,9 @@ void EditBookForm::updateBookInfoDisplay(const BookInfo &Info,
     break;
   case BookCopy::BS_Lost:
     StatusText = "遗失";
+    break;
+  default:
+    StatusText = "未知";
     break;
   }
   UI->BookStatusLabel->setText(StatusText);

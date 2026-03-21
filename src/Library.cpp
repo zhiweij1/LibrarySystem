@@ -682,19 +682,24 @@ ErrorOr<void> LibrarySystem::modifyBookStatusByBarcode(const QString &Barcode, i
     return {ErrorCode::InvalidStatus, "书籍已处于该状态"};
 
   // 验证状态转换：只允许从"在馆"或"借出"改为"遗失"
-  if (NewStatus != BookCopy::BS_Lost) {
-    return {ErrorCode::InvalidStatus, "只允许将图书状态修改为'遗失'"};
-  }
   if (CurrentStatus == BookCopy::BS_Lost) {
     return {ErrorCode::InvalidStatus, "遗失状态的图书无法修改状态"};
   }
+  if (NewStatus != BookCopy::BS_Lost) {
+    return {ErrorCode::InvalidStatus, "只允许将图书状态修改为'遗失'"};
+  }
+
+  if (!DB.transaction())
+    return {ErrorCode::DatabaseError, "事务启动失败: " + DB.lastError().text()};
 
   // 更新书籍状态
   Query.prepare("UPDATE bookcopy SET status = :status WHERE id = :id");
   Query.bindValue(":status", NewStatus);
   Query.bindValue(":id", CopyId);
-  if (!Query.exec())
+  if (!Query.exec()) {
+    DB.rollback();
     return {ErrorCode::DatabaseError, "更新状态失败: " + Query.lastError().text()};
+  }
 
   // 如果之前是"借出"状态，需要关闭借阅记录
   if (CurrentStatus == BookCopy::BS_Borrowed) {
@@ -702,10 +707,15 @@ ErrorOr<void> LibrarySystem::modifyBookStatusByBarcode(const QString &Barcode, i
         "UPDATE borrow_record SET return_date = date('now') "
         "WHERE copy_id = :cid AND return_date IS NULL");
     Query.bindValue(":cid", CopyId);
-    if (!Query.exec())
+    if (!Query.exec()) {
+      DB.rollback();
       return {ErrorCode::DatabaseError,
               "关闭借阅记录失败: " + Query.lastError().text()};
+    }
   }
 
-  return {};
+  if (DB.commit())
+    return {};
+  DB.rollback();
+  return {ErrorCode::DatabaseError, "提交失败: " + DB.lastError().text()};
 }

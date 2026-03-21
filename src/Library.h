@@ -119,7 +119,7 @@ public:
   ErrorOr<QSet<QString>> checkExistingBarcodes(const QSet<QString> &Barcodes);
   ErrorOr<QString> getNewReaderCardID();
 
-  // 通过条形码修改图书状态
+  // 通过条形码将图书标记为遗失
   ErrorOr<void> modifyBookStatusByBarcode(const QString &Barcode, int NewStatus);
 
   // 催还相关：获取近N天内到期的借书记录，按读者分组
