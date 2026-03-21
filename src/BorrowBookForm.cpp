@@ -1,4 +1,5 @@
 #include "BorrowBookForm.h"
+#include "CoverPreview.h"
 #include "ui_BorrowBookForm.h"
 
 #include <QMessageBox>
@@ -70,13 +71,8 @@ void BorrowBookForm::handleBookAddButtonClicked() {
   UI->BookListTableWidget->insertRow(Row);
 
   // add book cover
-  QLabel *ImgLabel = new QLabel();
-  QString FullPath =
-      QCoreApplication::applicationDirPath() + "/" + BookData.first.CoverPath;
-  QPixmap Pix(FullPath);
-  ImgLabel->setPixmap(
-      Pix.scaled(60, 80, Qt::KeepAspectRatio, Qt::SmoothTransformation));
-  ImgLabel->setAlignment(Qt::AlignCenter);
+  CoverPreviewLabel *ImgLabel =
+      new CoverPreviewLabel(BookData.first.CoverPath, 60, 80);
   UI->BookListTableWidget->setCellWidget(Row, 0, ImgLabel);
 
   // add book info
@@ -162,12 +158,10 @@ void BorrowBookForm::handleSubmitButtonClicked() {
 
   // clone data
   for (int Row = 0; Row < RowCount; ++Row) {
-    if (auto *OldImg = qobject_cast<QLabel *>(
+    if (auto *OldImg = dynamic_cast<CoverPreviewLabel *>(
             UI->BookListTableWidget->cellWidget(Row, 0))) {
-      QLabel *NewImg = new QLabel(&ConfirmTable);
-      NewImg->setPixmap(OldImg->pixmap().scaled(60, 80, Qt::KeepAspectRatio,
-                                                Qt::SmoothTransformation));
-      NewImg->setAlignment(Qt::AlignCenter);
+      CoverPreviewLabel *NewImg =
+          new CoverPreviewLabel(OldImg->coverPath(), 60, 80);
       ConfirmTable.setCellWidget(Row, 0, NewImg);
     }
 

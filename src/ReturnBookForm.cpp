@@ -1,4 +1,5 @@
 #include "ReturnBookForm.h"
+#include "CoverPreview.h"
 #include "ui_ReturnBookForm.h"
 
 #include "Library.h"
@@ -67,11 +68,8 @@ void ReturnBookForm::handleReaderNumberPushButtonClicked() {
     int Row = UI->BorrowingTableWidget->rowCount();
     UI->BorrowingTableWidget->insertRow(Row);
 
-    QLabel *ImgLabel = new QLabel();
-    QString FullPath =
-        QCoreApplication::applicationDirPath() + "/" + Detail.Info.CoverPath;
-    ImgLabel->setPixmap(QPixmap(FullPath).scaled(60, 80, Qt::KeepAspectRatio));
-    ImgLabel->setAlignment(Qt::AlignCenter);
+    CoverPreviewLabel *ImgLabel =
+        new CoverPreviewLabel(Detail.Info.CoverPath, 60, 80);
     UI->BorrowingTableWidget->setCellWidget(Row, 0, ImgLabel);
 
     QTableWidgetItem *BarcodeItem = new QTableWidgetItem(Detail.Copy.Barcode);

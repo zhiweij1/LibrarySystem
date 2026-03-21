@@ -1,4 +1,5 @@
 #include "QueryBookForm.h"
+#include "CoverPreview.h"
 #include "ui_QueryBookForm.h"
 
 #include "Library.h"
@@ -143,17 +144,8 @@ void QueryBookForm::updateTable() {
     int Row = UI->ResultTableWidget->rowCount();
     UI->ResultTableWidget->insertRow(Row);
 
-    QLabel *ImgLabel = new QLabel();
-    QString FullPath = QCoreApplication::applicationDirPath() + "/" +
-                       Item.first.Info.CoverPath;
-    QPixmap Pix(FullPath);
-    if (Pix.isNull()) {
-      ImgLabel->setText("无封面");
-    } else {
-      ImgLabel->setPixmap(
-          Pix.scaled(60, 80, Qt::KeepAspectRatio, Qt::SmoothTransformation));
-    }
-    ImgLabel->setAlignment(Qt::AlignCenter);
+    CoverPreviewLabel *ImgLabel =
+        new CoverPreviewLabel(Item.first.Info.CoverPath, 60, 80);
     UI->ResultTableWidget->setCellWidget(Row, 0, ImgLabel);
     UI->ResultTableWidget->setItem(
         Row, 1, new QTableWidgetItem(Item.first.Copy.Barcode));
