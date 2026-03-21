@@ -42,6 +42,7 @@ set(UI_SOURCES
     src/RemindReturnForm.h
     src/RemindReturnForm.cpp
     src/RemindReturnForm.ui
+    src/resources.qrc
 )
 
 execute_process(

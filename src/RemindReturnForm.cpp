@@ -82,7 +82,7 @@ QWidget *RemindReturnForm::createReaderCard(const LibrarySystem::ReaderBorrowInf
       QString("读者：%1  |  电话：%2")
           .arg(Info.reader.Name)
           .arg(Info.reader.PhoneNumber));
-  ReaderLabel->setStyleSheet("font-weight: bold; font-size: 14px;");
+  ReaderLabel->setStyleSheet("background: transparent; font-weight: bold; font-size: 14px;");
   HeaderLayout->addWidget(ReaderLabel);
 
   HeaderLayout->addStretch();
@@ -109,7 +109,7 @@ QWidget *RemindReturnForm::createReaderCard(const LibrarySystem::ReaderBorrowInf
 
     QToolButton *ToggleBtn = new QToolButton();
     ToggleBtn->setText(QString("▶ 其他借书（%1 本）").arg(Info.otherBooks.size()));
-    ToggleBtn->setStyleSheet("QToolButton { border: none; color: #666; font-size: 12px; }");
+    ToggleBtn->setStyleSheet("QToolButton{background:transparent;border:none;color:#666;font-size:12px;}");
     ToggleBtn->setCheckable(true);
     ToggleLayout->addWidget(ToggleBtn);
 
@@ -175,22 +175,22 @@ QWidget *RemindReturnForm::createBookItem(const BorrowDetailType &Book,
   InfoLayout->setSpacing(2);
 
   QLabel *TitleLabel = new QLabel(Book.Info.Title);
-  TitleLabel->setStyleSheet(IsOther ? "font-size: 13px; color: #333;" : "font-size: 13px; font-weight: bold; color: #333;");
+  TitleLabel->setStyleSheet(IsOther ? "background:transparent;font-size:13px;color:#333;" : "background:transparent;font-size:13px;font-weight:bold;color:#333;");
   InfoLayout->addWidget(TitleLabel);
 
   QLabel *AuthorLabel = new QLabel(QString("作者：%1").arg(Book.Info.Author));
-  AuthorLabel->setStyleSheet("font-size: 11px; color: #666;");
+  AuthorLabel->setStyleSheet("background:transparent;font-size:11px;color:#666;");
   InfoLayout->addWidget(AuthorLabel);
 
   QLabel *PublisherLabel = new QLabel(QString("出版社：%1").arg(Book.Info.Publisher));
-  PublisherLabel->setStyleSheet("font-size: 11px; color: #666;");
+  PublisherLabel->setStyleSheet("background:transparent;font-size:11px;color:#666;");
   InfoLayout->addWidget(PublisherLabel);
 
   Layout->addWidget(InfoWidget, 1);
 
   // 条码号
   QLabel *BarcodeLabel = new QLabel(Book.Copy.Barcode);
-  BarcodeLabel->setStyleSheet("font-size: 11px; color: #888; min-width: 80px;");
+  BarcodeLabel->setStyleSheet("background:transparent;font-size:11px;color:#888;min-width:80px;");
   BarcodeLabel->setAlignment(Qt::AlignCenter);
   Layout->addWidget(BarcodeLabel);
 
@@ -212,7 +212,7 @@ QWidget *RemindReturnForm::createBookItem(const BorrowDetailType &Book,
   }
 
   QLabel *StatusLabel = new QLabel(StatusText);
-  StatusLabel->setStyleSheet("font-size: 12px; " + StatusStyle);
+  StatusLabel->setStyleSheet("background:transparent;font-size:12px; " + StatusStyle);
   StatusLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
   StatusLabel->setMinimumWidth(70);
   Layout->addWidget(StatusLabel);

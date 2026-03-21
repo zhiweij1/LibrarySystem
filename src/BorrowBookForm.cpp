@@ -92,7 +92,12 @@ void BorrowBookForm::handleBookAddButtonClicked() {
 
   // add delete button
   QPushButton *DelBtn = new QPushButton("删除");
-  DelBtn->setStyleSheet("color: red;");
+  DelBtn->setStyleSheet(
+      "QPushButton{color:#D32F2F;background-color:#FFEBEE;border:1px solid #FFCDD2;"
+      "border-radius:4px;padding:5px 15px;}"
+      "QPushButton:hover{background-color:#FFCDD2;border-color:#D32F2F;}"
+      "QPushButton:pressed{background-color:#EF9A9A;border-color:#C62828;}"
+      "QPushButton:disabled{color:#BDBDBD;background-color:#FFEBEE;border:1px solid #FFCDD2;}");
   UI->BookListTableWidget->setCellWidget(Row, 5, DelBtn);
 
   // bind the delete operation
@@ -116,7 +121,7 @@ void BorrowBookForm::handleReaderNumberButtonClicked() {
   if (!ReaderErrOr) {
     QMessageBox::warning(this, "warning", "未找到该编号的读者");
     UI->ReaderInfoLabel->setText("未选择读者");
-    UI->ReaderInfoLabel->setStyleSheet("color: red;");
+    UI->ReaderInfoLabel->setStyleSheet("background:transparent;color:red;");
     return;
   }
 

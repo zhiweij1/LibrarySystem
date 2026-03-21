@@ -119,7 +119,7 @@ void QueryBookForm::initTable() {
   // 状态(5): 固定
   UI->ResultTableWidget->horizontalHeader()->setSectionResizeMode(
       5, QHeaderView::Fixed);
-  UI->ResultTableWidget->setColumnWidth(5, 70);
+  UI->ResultTableWidget->setColumnWidth(5, 100);
   // 借出日期(6): 固定
   UI->ResultTableWidget->horizontalHeader()->setSectionResizeMode(
       6, QHeaderView::Fixed);

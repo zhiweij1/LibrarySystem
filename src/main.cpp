@@ -59,6 +59,17 @@ int main(int argc, char *argv[]) {
   Font.setPointSize(16);
   App.setFont(Font);
 
+  // 全局样式：从 Qt 资源中的 QSS 文件加载，便于维护和复用
+  QFile StyleFile(":/styles/app.qss");
+  if (StyleFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+    App.setStyleSheet(QString::fromUtf8(StyleFile.readAll()));
+    qInfo() << "样式表加载成功";
+  } else {
+    qWarning() << "样式表加载失败，使用默认样式"
+               << "，路径:" << StyleFile.fileName()
+               << "，错误:" << StyleFile.errorString();
+  }
+
   qInfo() << "程序开始运行";
   MainWindow W;
   W.show();
