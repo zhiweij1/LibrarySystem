@@ -247,7 +247,7 @@ private slots:
     // 李四只借了普通书（30天后到期），没有紧急书
     Query.exec("INSERT INTO borrow_record (reader_id, copy_id, "
                "borrow_date, due_date) VALUES "
-               "(101, 102, date('now'), date('now', '+30 days'))");;
+               "(101, 102, date('now'), date('now', '+30 days'))");
 
     // 2. 调用 getRemindBorrowings(7)，查询7天内到期的书
     auto Res = LibrarySystem::getInstance().getRemindBorrowings(7);

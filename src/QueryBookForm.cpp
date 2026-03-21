@@ -8,8 +8,6 @@
 #include <QPushButton>
 #include <QHBoxLayout>
 #include <QHeaderView>
-#include <QScrollBar>
-#include <QTimer>
 
 QueryBookForm::QueryBookForm(QWidget *Parent)
     : QWidget(Parent), UI(new Ui::QueryBookForm) {
@@ -39,8 +37,9 @@ QueryBookForm::QueryBookForm(QWidget *Parent)
           &QueryBookForm::handlePrevPageClicked);
   connect(UI->NextPageButton, &QPushButton::clicked, this,
           &QueryBookForm::handleNextPageClicked);
-  //connect(UI->ResultTableWidget->horizontalHeader(), &QHeaderView::sectionResized,
-  //        this, &QueryBookForm::handleSectionResized);
+
+  // 初始化表格列（只执行一次）
+  initTable();
 
   // 初始加载所有数据
   loadData();
@@ -87,7 +86,16 @@ void QueryBookForm::handleStatusFilterChanged(int Index) {
   updatePageInfo();
 }
 
-void QueryBookForm::setupTableColumns() {
+void QueryBookForm::initTable() {
+  // 设置列数和表头标签
+  UI->ResultTableWidget->setColumnCount(8);
+  UI->ResultTableWidget->setHorizontalHeaderLabels(
+      {"封面", "条码", "书名", "作者", "出版社", "状态", "借出日期", "预计归还日期"});
+
+  UI->ResultTableWidget->setEditTriggers(QAbstractItemView::NoEditTriggers);
+  UI->ResultTableWidget->setSelectionBehavior(QAbstractItemView::SelectRows);
+  UI->ResultTableWidget->verticalHeader()->setDefaultSectionSize(80);
+
   // 封面(0): 固定（图片大小固定）
   UI->ResultTableWidget->horizontalHeader()->setSectionResizeMode(
       0, QHeaderView::Fixed);
@@ -123,22 +131,9 @@ void QueryBookForm::setupTableColumns() {
 }
 
 void QueryBookForm::updateTable() {
-  UI->ResultTableWidget->clear();
+  // 只清空数据，保留表头和列宽设置
+  UI->ResultTableWidget->clearContents();
   UI->ResultTableWidget->setRowCount(0);
-  UI->ResultTableWidget->setColumnCount(8);
-  UI->ResultTableWidget->setHorizontalHeaderLabels(
-      {"封面", "条码", "书名", "作者", "出版社", "状态", "借出日期",
-       "预计归还日期"});
-
-  UI->ResultTableWidget->setEditTriggers(QAbstractItemView::NoEditTriggers);
-  UI->ResultTableWidget->setSelectionBehavior(QAbstractItemView::SelectRows);
-  UI->ResultTableWidget->verticalHeader()->setDefaultSectionSize(80);
-
-  // 只在首次初始化列宽设置
-  if (!ColumnsInitialized) {
-    setupTableColumns();
-    ColumnsInitialized = true;
-  }
 
   int StartIndex = (CurrentPage - 1) * PageSize;
   int EndIndex = qMin(StartIndex + PageSize, FilteredResults.size());
