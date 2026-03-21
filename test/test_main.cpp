@@ -436,8 +436,12 @@ private slots:
     // status = 2 代表 BS_Lost
     Query.exec("INSERT INTO bookcopy (id, info_id, barcode, status) VALUES "
                "(502, 502, 'BC_502', 2)");
-    Query.exec("INSERT INTO borrow_record (id, reader_id, copy_id, due_date) "
-               "VALUES (5002, 502, 502, date('now', '+5 days'))");
+
+    // 在调用 renewBooks 之前先设置固定的 due_date
+    QString OriginalDueDate("2025-01-10");
+    Query.exec(QString("INSERT INTO borrow_record (id, reader_id, copy_id, "
+                       "due_date) VALUES (5002, 502, 502, '%1')")
+                   .arg(OriginalDueDate));
 
     // 尝试续借遗失的书
     auto Res = LibrarySystem::getInstance().renewBooks({5002});
@@ -445,11 +449,7 @@ private slots:
     QCOMPARE(Res.getErrCode(), ErrorCode::InvalidStatus);
     QVERIFY(Res.getErrMsg().contains("遗失"));
 
-    // 验证 due_date 未被修改（使用固定日期避免时区问题）
-    QString OriginalDueDate("2025-01-10");
-    Query.exec(
-        QString("UPDATE borrow_record SET due_date = '%1' WHERE id = 5002")
-            .arg(OriginalDueDate));
+    // 验证 due_date 未被修改
     Query.exec("SELECT due_date FROM borrow_record WHERE id = 5002");
     Query.next();
     QCOMPARE(Query.value(0).toString(), OriginalDueDate);
