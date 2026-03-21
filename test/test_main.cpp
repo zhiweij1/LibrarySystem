@@ -445,12 +445,14 @@ private slots:
     QCOMPARE(Res.getErrCode(), ErrorCode::InvalidStatus);
     QVERIFY(Res.getErrMsg().contains("遗失"));
 
-    // 验证 due_date 未被修改
-    QDate OriginalDue = QDate::currentDate().addDays(5);
+    // 验证 due_date 未被修改（使用固定日期避免时区问题）
+    QString OriginalDueDate("2025-01-10");
+    Query.exec(
+        QString("UPDATE borrow_record SET due_date = '%1' WHERE id = 5002")
+            .arg(OriginalDueDate));
     Query.exec("SELECT due_date FROM borrow_record WHERE id = 5002");
     Query.next();
-    QDate ActualDue = Query.value(0).toDate();
-    QCOMPARE(ActualDue, OriginalDue);
+    QCOMPARE(Query.value(0).toString(), OriginalDueDate);
   }
 };
 

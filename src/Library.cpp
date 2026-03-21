@@ -217,8 +217,12 @@ ErrorOr<void> LibrarySystem::borrowBook(QSqlQuery &Query, const int ReaderID,
   // 检查书籍当前状态
   Query.prepare("SELECT status FROM bookcopy WHERE id = :cid");
   Query.bindValue(":cid", CopyID);
-  if (!Query.exec() || !Query.next())
-    return {ErrorCode::NotFound, "未找到书籍副本: " + Query.lastError().text()};
+  if (!Query.exec())
+    return {ErrorCode::DatabaseError,
+            "查询书籍副本状态失败: " + Query.lastError().text()};
+  if (!Query.next())
+    return {ErrorCode::NotFound,
+            "未找到书籍副本，副本ID: " + QString::number(CopyID)};
 
   int Status = Query.value(0).toInt();
   if (Status == BookCopy::BookStatus::BS_Borrowed)
@@ -334,8 +338,12 @@ ErrorOr<void> LibrarySystem::returnBook(QSqlQuery &Query, const int RecordID) {
       "JOIN bookcopy bc ON br.copy_id = bc.id "
       "WHERE br.id = :rid");
   Query.bindValue(":rid", RecordID);
-  if (!Query.exec() || !Query.next())
-    return {ErrorCode::NotFound, "未找到借阅记录: " + Query.lastError().text()};
+  if (!Query.exec())
+    return {ErrorCode::DatabaseError,
+            "查询借阅记录失败: " + Query.lastError().text()};
+  if (!Query.next())
+    return {ErrorCode::NotFound,
+            "未找到借阅记录，记录ID: " + QString::number(RecordID)};
   CopyId = Query.value(0).toInt();
   Status = Query.value(1).toInt();
 
@@ -393,9 +401,12 @@ ErrorOr<void> LibrarySystem::renewBook(QSqlQuery &Query, const int RecordID) {
       "JOIN bookcopy bc ON br.copy_id = bc.id "
       "WHERE br.id = :rid");
   Query.bindValue(":rid", RecordID);
-  if (!Query.exec() || !Query.next())
+  if (!Query.exec())
+    return {ErrorCode::DatabaseError,
+            "查询借阅记录失败: " + Query.lastError().text()};
+  if (!Query.next())
     return {ErrorCode::NotFound,
-            "未找到借阅记录: " + Query.lastError().text()};
+            "未找到借阅记录，记录ID: " + QString::number(RecordID)};
 
   int Status = Query.value(0).toInt();
   if (Status == BookCopy::BookStatus::BS_Lost)
