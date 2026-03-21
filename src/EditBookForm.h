@@ -2,6 +2,7 @@
 #define EDITBOOKFORM_H
 
 #include <QWidget>
+#include "Library.h"
 
 namespace Ui {
 class EditBookForm;
@@ -14,11 +15,18 @@ public:
   explicit EditBookForm(QWidget *Parent = nullptr);
   ~EditBookForm();
 
-private:
+private slots:
   void handleSelectCSVFileButtonClicked();
   void handleLoadFromCSVButtonClicked();
+  void handleQueryButtonClicked();
+  void handleMarkLostButtonClicked();
+
+private:
+  void updateBookInfoDisplay(const BookInfo &Info, const BookCopy &Copy);
+  void clearBookInfoDisplay();
 
   Ui::EditBookForm *UI;
+  QString CurrentBarcode;
 };
 
 #endif // EDITBOOKFORM_H

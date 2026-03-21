@@ -9,10 +9,18 @@
 EditBookForm::EditBookForm(QWidget *Parent)
     : QWidget(Parent), UI(new Ui::EditBookForm) {
   UI->setupUi(this);
+  UI->MarkLostButton->setEnabled(false);
+
   connect(UI->SelectCSVFileButton, &QPushButton::clicked, this,
           &EditBookForm::handleSelectCSVFileButtonClicked);
   connect(UI->LoadFromCSVButton, &QPushButton::clicked, this,
           &EditBookForm::handleLoadFromCSVButtonClicked);
+  connect(UI->QueryButton, &QPushButton::clicked, this,
+          &EditBookForm::handleQueryButtonClicked);
+  connect(UI->BarcodeLineEdit, &QLineEdit::returnPressed, this,
+          &EditBookForm::handleQueryButtonClicked);
+  connect(UI->MarkLostButton, &QPushButton::clicked, this,
+          &EditBookForm::handleMarkLostButtonClicked);
 }
 
 EditBookForm::~EditBookForm() { delete UI; }
@@ -40,4 +48,80 @@ void EditBookForm::handleLoadFromCSVButtonClicked() {
     QMessageBox::information(this, "information", "数据已成功导入至数据库");
     qInfo() << "数据已成功导入至数据库";
   }
+}
+
+void EditBookForm::handleQueryButtonClicked() {
+  QString Barcode = UI->BarcodeLineEdit->text().trimmed();
+  if (Barcode.isEmpty()) {
+    QMessageBox::warning(this, "提示", "请输入条形码");
+    return;
+  }
+
+  auto Result = LibrarySystem::getInstance().getBookDataByBarcode(Barcode);
+  if (!Result) {
+    QMessageBox::warning(this, "查询失败", Result.getErrMsg());
+    clearBookInfoDisplay();
+    return;
+  }
+
+  CurrentBarcode = Barcode;
+  const auto &[Info, Copy] = Result.getValue();
+  updateBookInfoDisplay(Info, Copy);
+
+  // 只有"在馆"或"借出"状态才允许标记遗失
+  UI->MarkLostButton->setEnabled(
+      Copy.Status == BookCopy::BS_InLibrary ||
+      Copy.Status == BookCopy::BS_Borrowed);
+}
+
+void EditBookForm::handleMarkLostButtonClicked() {
+  if (CurrentBarcode.isEmpty()) {
+    QMessageBox::warning(this, "提示", "请先查询图书");
+    return;
+  }
+
+  auto Result = LibrarySystem::getInstance().modifyBookStatusByBarcode(
+      CurrentBarcode, BookCopy::BS_Lost);
+  if (!Result) {
+    QMessageBox::warning(this, "标记失败", Result.getErrMsg());
+    return;
+  }
+
+  QMessageBox::information(this, "成功", "图书已标记为遗失");
+
+  // 重新查询以刷新显示
+  handleQueryButtonClicked();
+}
+
+void EditBookForm::updateBookInfoDisplay(const BookInfo &Info,
+                                         const BookCopy &Copy) {
+  UI->BookTitleLabel->setText(Info.Title);
+  UI->BookAuthorLabel->setText(Info.Author);
+  UI->BookPublisherLabel->setText(Info.Publisher);
+
+  QString StatusText;
+  switch (Copy.Status) {
+  case BookCopy::BS_InLibrary:
+    StatusText = "在馆";
+    break;
+  case BookCopy::BS_Borrowed:
+    StatusText = "借出";
+    break;
+  case BookCopy::BS_Lost:
+    StatusText = "遗失";
+    break;
+  default:
+    StatusText = "未知";
+    break;
+  }
+  UI->BookStatusLabel->setText(StatusText);
+}
+
+void EditBookForm::clearBookInfoDisplay() {
+  CurrentBarcode.clear();
+  UI->BookTitleLabel->setText("-");
+  UI->BookAuthorLabel->setText("-");
+  UI->BookPublisherLabel->setText("-");
+  UI->BookStatusLabel->setText("-");
+  UI->MarkLostButton->setEnabled(false);
 }

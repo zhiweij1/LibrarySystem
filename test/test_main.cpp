@@ -454,6 +454,119 @@ private slots:
     Query.next();
     QCOMPARE(Query.value(0).toString(), OriginalDueDate);
   }
+
+  // ===== modifyBookStatusByBarcode 测试 =====
+
+  void testMarkInLibraryBookAsLost() {
+    QSqlQuery Query;
+    Query.exec("DELETE FROM borrow_record");
+    Query.exec("DELETE FROM bookcopy");
+    Query.exec("DELETE FROM bookinfo");
+
+    Query.exec("INSERT INTO bookinfo (id, title) VALUES (600, '待遗失书')");
+    Query.exec(QString("INSERT INTO bookcopy (id, info_id, barcode, status) "
+                        "VALUES (600, 600, 'BC_LOST_01', %1)")
+                   .arg(BookCopy::BS_InLibrary));
+
+    auto Res = LibrarySystem::getInstance().modifyBookStatusByBarcode(
+        "BC_LOST_01", BookCopy::BS_Lost);
+    QVERIFY2(Res, Res.getErrMsg().toUtf8().constData());
+
+    Query.exec("SELECT status FROM bookcopy WHERE barcode = 'BC_LOST_01'");
+    Query.next();
+    QCOMPARE(Query.value(0).toInt(), static_cast<int>(BookCopy::BS_Lost));
+  }
+
+  void testMarkBorrowedBookAsLost() {
+    QSqlQuery Query;
+    Query.exec("DELETE FROM borrow_record");
+    Query.exec("DELETE FROM bookcopy");
+    Query.exec("DELETE FROM bookinfo");
+    Query.exec("DELETE FROM reader");
+
+    Query.exec("INSERT INTO reader (id, name, card_number) VALUES "
+               "(600, '读者', 'CARD_600')");
+    Query.exec("INSERT INTO bookinfo (id, title) VALUES (601, '借出中遗失书')");
+    Query.exec(QString("INSERT INTO bookcopy (id, info_id, barcode, status) "
+                        "VALUES (601, 601, 'BC_LOST_02', %1)")
+                   .arg(BookCopy::BS_Borrowed));
+    Query.exec("INSERT INTO borrow_record (reader_id, copy_id, borrow_date, "
+               "due_date) "
+               "VALUES (600, 601, date('now', '-5 days'), date('now', '+25 "
+               "days'))");
+
+    auto Res = LibrarySystem::getInstance().modifyBookStatusByBarcode(
+        "BC_LOST_02", BookCopy::BS_Lost);
+    QVERIFY2(Res, Res.getErrMsg().toUtf8().constData());
+
+    // 验证状态已更新
+    Query.exec("SELECT status FROM bookcopy WHERE barcode = 'BC_LOST_02'");
+    Query.next();
+    QCOMPARE(Query.value(0).toInt(), static_cast<int>(BookCopy::BS_Lost));
+
+    // 验证借阅记录已自动关闭
+    Query.exec("SELECT return_date FROM borrow_record WHERE copy_id = 601");
+    Query.next();
+    QString Today = QDate::currentDate().toString("yyyy-MM-dd");
+    QCOMPARE(Query.value(0).toString(), Today);
+  }
+
+  void testModifyStatusNonExistentBarcode() {
+    auto Res = LibrarySystem::getInstance().modifyBookStatusByBarcode(
+        "NOT_EXIST_999", BookCopy::BS_Lost);
+    QVERIFY(!Res);
+    QCOMPARE(Res.getErrCode(), ErrorCode::NotFound);
+    QVERIFY(Res.getErrMsg().contains("不存在"));
+  }
+
+  void testModifyStatusAlreadyLost() {
+    QSqlQuery Query;
+    Query.exec("INSERT INTO bookinfo (id, title) VALUES (602, '已遗失书')");
+    Query.exec(QString("INSERT INTO bookcopy (id, info_id, barcode, status) "
+                        "VALUES (602, 602, 'BC_LOST_03', %1)")
+                   .arg(BookCopy::BS_Lost));
+
+    auto Res = LibrarySystem::getInstance().modifyBookStatusByBarcode(
+        "BC_LOST_03", BookCopy::BS_Lost);
+    QVERIFY(!Res);
+    QCOMPARE(Res.getErrCode(), ErrorCode::InvalidStatus);
+    QVERIFY(Res.getErrMsg().contains("已处于该状态"));
+  }
+
+  void testModifyStatusToNonLost() {
+    QSqlQuery Query;
+    Query.exec("INSERT INTO bookinfo (id, title) VALUES (603, '在馆书')");
+    Query.exec(QString("INSERT INTO bookcopy (id, info_id, barcode, status) "
+                        "VALUES (603, 603, 'BC_LOST_04', %1)")
+                   .arg(BookCopy::BS_InLibrary));
+
+    // 尝试改为"借出"（应拒绝）
+    auto Res = LibrarySystem::getInstance().modifyBookStatusByBarcode(
+        "BC_LOST_04", BookCopy::BS_Borrowed);
+    QVERIFY(!Res);
+    QCOMPARE(Res.getErrCode(), ErrorCode::InvalidStatus);
+    QVERIFY(Res.getErrMsg().contains("只允许"));
+  }
+
+  void testModifyLostBookStatus() {
+    QSqlQuery Query;
+    Query.exec("INSERT INTO bookinfo (id, title) VALUES (604, '遗失书')");
+    Query.exec(QString("INSERT INTO bookcopy (id, info_id, barcode, status) "
+                        "VALUES (604, 604, 'BC_LOST_05', %1)")
+                   .arg(BookCopy::BS_Lost));
+
+    // 遗失书不能改任何状态
+    auto Res = LibrarySystem::getInstance().modifyBookStatusByBarcode(
+        "BC_LOST_05", BookCopy::BS_InLibrary);
+    QVERIFY(!Res);
+    QCOMPARE(Res.getErrCode(), ErrorCode::InvalidStatus);
+    QVERIFY(Res.getErrMsg().contains("遗失"));
+
+    // 确认状态未变
+    Query.exec("SELECT status FROM bookcopy WHERE barcode = 'BC_LOST_05'");
+    Query.next();
+    QCOMPARE(Query.value(0).toInt(), static_cast<int>(BookCopy::BS_Lost));
+  }
 };
 
 QTEST_GUILESS_MAIN(LibrarySystemTest)
