@@ -546,10 +546,10 @@ LibrarySystem::getRemindBorrowings(int Days) {
   // 查询所有未归还的借书记录，按到期日期排序
   QString Sql =
       "SELECT "
-      "br.id, br.reader_id, br.borrow_date, br.due_date, "          // br (0-3)
-      "bc.id, bc.barcode, "                                          // bc (4-5)
-      "bi.id, bi.title, bi.author, bi.publisher, bi.cover_path, "   // bi (6-10)
-      "r.id, r.name, r.card_number, r.phone "                       // r  (11-14)
+      "br.id, br.reader_id, br.borrow_date, br.due_date, "               // br (0-3)
+      "bc.id, bc.barcode, bc.info_id, bc.status, "                       // bc (4-7)
+      "bi.id, bi.title, bi.author, bi.publisher, bi.cover_path, "        // bi (8-12)
+      "r.id, r.name, r.card_number, r.phone "                            // r  (13-16)
       "FROM borrow_record br "
       "JOIN bookcopy bc ON br.copy_id = bc.id "
       "JOIN bookinfo bi ON bc.info_id = bi.id "
@@ -576,17 +576,19 @@ LibrarySystem::getRemindBorrowings(int Days) {
 
     Detail.Copy.ID = Query.value(4).toInt();
     Detail.Copy.Barcode = Query.value(5).toString();
+    Detail.Copy.InfoID = Query.value(6).toInt();
+    Detail.Copy.Status = static_cast<BookCopy::BookStatus>(Query.value(7).toInt());
 
-    Detail.Info.ID = Query.value(6).toInt();
-    Detail.Info.Title = Query.value(7).toString();
-    Detail.Info.Author = Query.value(8).toString();
-    Detail.Info.Publisher = Query.value(9).toString();
-    Detail.Info.CoverPath = Query.value(10).toString();
+    Detail.Info.ID = Query.value(8).toInt();
+    Detail.Info.Title = Query.value(9).toString();
+    Detail.Info.Author = Query.value(10).toString();
+    Detail.Info.Publisher = Query.value(11).toString();
+    Detail.Info.CoverPath = Query.value(12).toString();
 
-    Rdr.ID = Query.value(11).toInt();
-    Rdr.Name = Query.value(12).toString();
-    Rdr.CardNumber = Query.value(13).toString();
-    Rdr.PhoneNumber = Query.value(14).toString();
+    Rdr.ID = Query.value(13).toInt();
+    Rdr.Name = Query.value(14).toString();
+    Rdr.CardNumber = Query.value(15).toString();
+    Rdr.PhoneNumber = Query.value(16).toString();
 
     int ReaderId = Rdr.ID;
     if (!ReaderMap.contains(ReaderId)) {

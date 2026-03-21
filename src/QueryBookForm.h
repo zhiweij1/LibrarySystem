@@ -26,6 +26,7 @@ private slots:
 
 private:
   void loadData();
+  void setupTableColumns();
   void updateTable();
   void updatePageInfo();
 
@@ -34,7 +35,8 @@ private:
   QVector<std::pair<BorrowDetailType, Reader>> FilteredResults;
   int CurrentPage = 1;
   static const int PageSize = 20;
-  bool IsResizing = false;  // 防止递归调用
+  bool IsResizing = false;        // 防止递归调用
+  bool ColumnsInitialized = false; // 列宽是否已初始化
 };
 
 #endif // QUERYBOOKFORM_H

@@ -3,6 +3,7 @@
 
 #include "Library.h"
 
+#include <QCoreApplication>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QHBoxLayout>
@@ -85,18 +86,7 @@ void QueryBookForm::handleStatusFilterChanged(int Index) {
   updatePageInfo();
 }
 
-void QueryBookForm::updateTable() {
-  UI->ResultTableWidget->clear();
-  UI->ResultTableWidget->setRowCount(0);
-  UI->ResultTableWidget->setColumnCount(8);
-  UI->ResultTableWidget->setHorizontalHeaderLabels(
-      {"封面", "条码", "书名", "作者", "出版社", "状态", "借出日期",
-       "预计归还日期"});
-
-  UI->ResultTableWidget->setEditTriggers(QAbstractItemView::NoEditTriggers);
-  UI->ResultTableWidget->setSelectionBehavior(QAbstractItemView::SelectRows);
-  UI->ResultTableWidget->verticalHeader()->setDefaultSectionSize(80);
-
+void QueryBookForm::setupTableColumns() {
   // 禁用水平滚动条，防止拖动超出窗口
   UI->ResultTableWidget->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
 
@@ -137,6 +127,25 @@ void QueryBookForm::updateTable() {
       7, QHeaderView::Stretch);
 
   IsResizing = false;
+}
+
+void QueryBookForm::updateTable() {
+  UI->ResultTableWidget->clear();
+  UI->ResultTableWidget->setRowCount(0);
+  UI->ResultTableWidget->setColumnCount(8);
+  UI->ResultTableWidget->setHorizontalHeaderLabels(
+      {"封面", "条码", "书名", "作者", "出版社", "状态", "借出日期",
+       "预计归还日期"});
+
+  UI->ResultTableWidget->setEditTriggers(QAbstractItemView::NoEditTriggers);
+  UI->ResultTableWidget->setSelectionBehavior(QAbstractItemView::SelectRows);
+  UI->ResultTableWidget->verticalHeader()->setDefaultSectionSize(80);
+
+  // 只在首次初始化列宽设置
+  if (!ColumnsInitialized) {
+    setupTableColumns();
+    ColumnsInitialized = true;
+  }
 
   int StartIndex = (CurrentPage - 1) * PageSize;
   int EndIndex = qMin(StartIndex + PageSize, FilteredResults.size());
@@ -198,7 +207,6 @@ void QueryBookForm::updateTable() {
     }
 
     StatusLayout->addWidget(StatusBtn);
-    StatusWidget->setLayout(StatusLayout);
     UI->ResultTableWidget->setCellWidget(Row, 5, StatusWidget);
 
     if (Item.first.Copy.Status == BookCopy::BookStatus::BS_Borrowed) {
