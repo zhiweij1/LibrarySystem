@@ -214,6 +214,18 @@ LibrarySystem::getReaderByCardNumber(const QString &CardNumber) {
 
 ErrorOr<void> LibrarySystem::borrowBook(QSqlQuery &Query, const int ReaderID,
                                         const int CopyID) {
+  // 检查书籍当前状态
+  Query.prepare("SELECT status FROM bookcopy WHERE id = :cid");
+  Query.bindValue(":cid", CopyID);
+  if (!Query.exec() || !Query.next())
+    return {ErrorCode::NotFound, "未找到书籍副本: " + Query.lastError().text()};
+
+  int Status = Query.value(0).toInt();
+  if (Status == BookCopy::BookStatus::BS_Borrowed)
+    return {ErrorCode::InvalidStatus, "该书籍目前处于'借出'状态，无法再次借出"};
+  if (Status == BookCopy::BookStatus::BS_Lost)
+    return {ErrorCode::InvalidStatus, "该书籍目前处于'遗失'状态，无法借出"};
+
   Query.prepare(
       "INSERT INTO borrow_record (reader_id, copy_id, borrow_date, due_date) "
       "VALUES (:rid, :cid, date('now'), date('now', '+30 days'))");
@@ -314,13 +326,21 @@ LibrarySystem::getBorrowingDetailsByReader(int ReaderId) {
 
 ErrorOr<void> LibrarySystem::returnBook(QSqlQuery &Query, const int RecordID) {
   int CopyId = -1;
+  int Status = -1;
 
-  // 获取副本ID
-  Query.prepare("SELECT copy_id FROM borrow_record WHERE id = :rid");
+  // 获取副本ID及其状态
+  Query.prepare(
+      "SELECT br.copy_id, bc.status FROM borrow_record br "
+      "JOIN bookcopy bc ON br.copy_id = bc.id "
+      "WHERE br.id = :rid");
   Query.bindValue(":rid", RecordID);
   if (!Query.exec() || !Query.next())
     return {ErrorCode::NotFound, "未找到借阅记录: " + Query.lastError().text()};
   CopyId = Query.value(0).toInt();
+  Status = Query.value(1).toInt();
+
+  if (Status == BookCopy::BookStatus::BS_Lost)
+    return {ErrorCode::InvalidStatus, "该书籍处于'遗失'状态，请先办理挂失处理后再归还"};
 
   // 更新归还日期
   Query.prepare(
@@ -367,6 +387,20 @@ ErrorOr<void> LibrarySystem::returnBooks(const QList<int> &RecordIDs) {
 }
 
 ErrorOr<void> LibrarySystem::renewBook(QSqlQuery &Query, const int RecordID) {
+  // 先查询借阅记录对应的书籍副本状态
+  Query.prepare(
+      "SELECT bc.status FROM borrow_record br "
+      "JOIN bookcopy bc ON br.copy_id = bc.id "
+      "WHERE br.id = :rid");
+  Query.bindValue(":rid", RecordID);
+  if (!Query.exec() || !Query.next())
+    return {ErrorCode::NotFound,
+            "未找到借阅记录: " + Query.lastError().text()};
+
+  int Status = Query.value(0).toInt();
+  if (Status == BookCopy::BookStatus::BS_Lost)
+    return {ErrorCode::InvalidStatus, "该书籍处于'遗失'状态，无法续借"};
+
   Query.prepare(
       "UPDATE borrow_record SET due_date = date(due_date, '+30 days') "
       "WHERE id = :rid");
