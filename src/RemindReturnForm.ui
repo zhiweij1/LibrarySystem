@@ -37,6 +37,9 @@
          <height>30</height>
         </size>
        </property>
+       <property name="styleSheet">
+        <string>QSpinBox::up-button, QSpinBox::down-button { width: 0; border: none; }</string>
+       </property>
        <property name="minimum">
         <number>0</number>
        </property>

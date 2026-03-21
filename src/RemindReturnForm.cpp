@@ -20,6 +20,8 @@ RemindReturnForm::RemindReturnForm(QWidget *Parent)
 
   connect(UI->QueryButton, &QPushButton::clicked, this,
           &RemindReturnForm::handleQueryClicked);
+  connect(UI->DaysSpinBox, &QSpinBox::editingFinished, this,
+          &RemindReturnForm::handleQueryClicked);
 
   // 初始加载
   loadData();
