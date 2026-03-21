@@ -1,4 +1,5 @@
 #include "RemindReturnForm.h"
+#include "CoverPreview.h"
 #include "ui_RemindReturnForm.h"
 
 #include "Library.h"
@@ -152,20 +153,8 @@ QWidget *RemindReturnForm::createBookItem(const BorrowDetailType &Book,
   Layout->setSpacing(10);
 
   // 封面图片
-  QLabel *ImgLabel = new QLabel();
+  CoverPreviewLabel *ImgLabel = new CoverPreviewLabel(Book.Info.CoverPath, 60, 80);
   ImgLabel->setFixedSize(60, 80);
-  QString FullPath = QCoreApplication::applicationDirPath() + "/" +
-                     Book.Info.CoverPath;
-  QPixmap Pix(FullPath);
-  if (Pix.isNull()) {
-    ImgLabel->setText("无封面");
-    ImgLabel->setAlignment(Qt::AlignCenter);
-    ImgLabel->setStyleSheet("background-color: #E0E0E0; color: #999; font-size: 11px;");
-  } else {
-    ImgLabel->setPixmap(
-        Pix.scaled(60, 80, Qt::KeepAspectRatio, Qt::SmoothTransformation));
-    ImgLabel->setAlignment(Qt::AlignCenter);
-  }
   Layout->addWidget(ImgLabel);
 
   // 书籍信息
