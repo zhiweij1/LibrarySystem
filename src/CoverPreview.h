@@ -22,9 +22,9 @@ public:
     } else {
       setPixmap(Pix.scaled(thumbWidth, thumbHeight, Qt::KeepAspectRatio,
                            Qt::SmoothTransformation));
+      setCursor(Qt::PointingHandCursor);
     }
     setAlignment(Qt::AlignCenter);
-    setCursor(Qt::PointingHandCursor);
   }
 
   QString coverPath() const { return CoverPath; }
@@ -35,7 +35,7 @@ protected:
       QString FullPath = QCoreApplication::applicationDirPath() + "/" + CoverPath;
       QPixmap Pix(FullPath);
       if (!Pix.isNull()) {
-        QDialog Dlg(this);
+        QDialog Dlg(this->window());
         Dlg.setWindowTitle("封面预览");
         Dlg.setModal(true);
         QVBoxLayout *Layout = new QVBoxLayout(&Dlg);
