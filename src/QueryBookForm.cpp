@@ -9,6 +9,7 @@
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QScrollBar>
+#include <QTimer>
 
 QueryBookForm::QueryBookForm(QWidget *Parent)
     : QWidget(Parent), UI(new Ui::QueryBookForm) {
@@ -38,8 +39,8 @@ QueryBookForm::QueryBookForm(QWidget *Parent)
           &QueryBookForm::handlePrevPageClicked);
   connect(UI->NextPageButton, &QPushButton::clicked, this,
           &QueryBookForm::handleNextPageClicked);
-  connect(UI->ResultTableWidget->horizontalHeader(), &QHeaderView::sectionResized,
-          this, &QueryBookForm::handleSectionResized);
+  //connect(UI->ResultTableWidget->horizontalHeader(), &QHeaderView::sectionResized,
+  //        this, &QueryBookForm::handleSectionResized);
 
   // 初始加载所有数据
   loadData();
@@ -87,20 +88,13 @@ void QueryBookForm::handleStatusFilterChanged(int Index) {
 }
 
 void QueryBookForm::setupTableColumns() {
-  // 禁用水平滚动条，防止拖动超出窗口
-  UI->ResultTableWidget->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-
-  // 设置列宽时暂时禁用信号处理
-  IsResizing = true;
-
-  // 设置列宽：全部可拖动，最后一列自动填充剩余空间
   // 封面(0): 固定（图片大小固定）
   UI->ResultTableWidget->horizontalHeader()->setSectionResizeMode(
       0, QHeaderView::Fixed);
   UI->ResultTableWidget->setColumnWidth(0, 80);
-  // 条码(1): 可拖动
+  // 条码(1): 固定
   UI->ResultTableWidget->horizontalHeader()->setSectionResizeMode(
-      1, QHeaderView::Interactive);
+      1, QHeaderView::Fixed);
   UI->ResultTableWidget->setColumnWidth(1, 110);
   // 书名(2): 可拖动，给较大初始宽度
   UI->ResultTableWidget->horizontalHeader()->setSectionResizeMode(
@@ -114,19 +108,18 @@ void QueryBookForm::setupTableColumns() {
   UI->ResultTableWidget->horizontalHeader()->setSectionResizeMode(
       4, QHeaderView::Interactive);
   UI->ResultTableWidget->setColumnWidth(4, 300);
-  // 状态(5): 可拖动
+  // 状态(5): 固定
   UI->ResultTableWidget->horizontalHeader()->setSectionResizeMode(
-      5, QHeaderView::Interactive);
+      5, QHeaderView::Fixed);
   UI->ResultTableWidget->setColumnWidth(5, 70);
-  // 借出日期(6): 可拖动
+  // 借出日期(6): 固定
   UI->ResultTableWidget->horizontalHeader()->setSectionResizeMode(
-      6, QHeaderView::Interactive);
+      6, QHeaderView::Fixed);
   UI->ResultTableWidget->setColumnWidth(6, 150);
-  // 预计归还日期(7): 自动填充剩余空间
+  // 预计归还日期(7): 固定
   UI->ResultTableWidget->horizontalHeader()->setSectionResizeMode(
-      7, QHeaderView::Stretch);
-
-  IsResizing = false;
+      7, QHeaderView::Fixed);
+  UI->ResultTableWidget->setColumnWidth(7, 150);
 }
 
 void QueryBookForm::updateTable() {
@@ -256,31 +249,5 @@ void QueryBookForm::handleNextPageClicked() {
     CurrentPage++;
     updateTable();
     updatePageInfo();
-  }
-}
-
-void QueryBookForm::handleSectionResized(int LogicalIndex, int OldSize,
-                                          int NewSize) {
-  if (IsResizing || LogicalIndex == 7) {
-    return;  // 防止递归，且最后一列(Stretch)不需要限制
-  }
-
-  QTableWidget *Table = UI->ResultTableWidget;
-  int TotalWidth = 0;
-  for (int i = 0; i < Table->columnCount(); ++i) {
-    TotalWidth += Table->columnWidth(i);
-  }
-
-  // 计算可用宽度，减去垂直滚动条宽度
-  int AvailableWidth = Table->width();
-  if (Table->verticalScrollBar()->isVisible()) {
-    AvailableWidth -= Table->verticalScrollBar()->width();
-  }
-
-  if (TotalWidth > AvailableWidth) {
-    // 超出窗口，恢复原来的宽度
-    IsResizing = true;
-    Table->setColumnWidth(LogicalIndex, OldSize);
-    IsResizing = false;
   }
 }

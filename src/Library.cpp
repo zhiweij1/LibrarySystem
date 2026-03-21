@@ -578,6 +578,7 @@ LibrarySystem::getRemindBorrowings(int Days) {
     Detail.Copy.Barcode = Query.value(5).toString();
     Detail.Copy.InfoID = Query.value(6).toInt();
     Detail.Copy.Status = static_cast<BookCopy::BookStatus>(Query.value(7).toInt());
+    Detail.Record.CopyId = Detail.Copy.ID;
 
     Detail.Info.ID = Query.value(8).toInt();
     Detail.Info.Title = Query.value(9).toString();

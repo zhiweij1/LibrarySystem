@@ -224,29 +224,30 @@ private slots:
                "(100, '紧急书A', '作者A', '出版社A')");
     Query.exec("INSERT INTO bookinfo (id, title, author, publisher) VALUES "
                "(101, '普通书B', '作者B', '出版社B')");
+    Query.exec("INSERT INTO bookinfo (id, title, author, publisher) VALUES "
+               "(102, '李四的书', '作者C', '出版社C')");
 
     // 插入书籍副本
     Query.exec("INSERT INTO bookcopy (id, info_id, barcode, status) VALUES "
                "(100, 100, 'BC_100', 1)"); // 紧急书
     Query.exec("INSERT INTO bookcopy (id, info_id, barcode, status) VALUES "
-               "(101, 101, 'BC_101', 1)"); // 普通书
+               "(101, 101, 'BC_101', 1)"); // 张三的普通书
+    Query.exec("INSERT INTO bookcopy (id, info_id, barcode, status) VALUES "
+               "(102, 102, 'BC_102', 1)"); // 李四的书
 
     // 插入借阅记录
     // 张三借了紧急书（3天后到期）+ 普通书（30天后到期）
-    QDate Today = QDate::currentDate();
-    Query.exec(QString("INSERT INTO borrow_record (reader_id, copy_id, "
-                       "borrow_date, due_date) VALUES "
-                       "(100, 100, date('now'), date('now', '+3 days'))")
-                   .arg(Today.toString("yyyy-MM-dd")));
-    Query.exec(QString("INSERT INTO borrow_record (reader_id, copy_id, "
-                       "borrow_date, due_date) VALUES "
-                       "(100, 101, date('now'), date('now', '+30 days'))")
-                   .arg(Today.toString("yyyy-MM-dd")));
+    Query.exec("INSERT INTO borrow_record (reader_id, copy_id, "
+               "borrow_date, due_date) VALUES "
+               "(100, 100, date('now'), date('now', '+3 days'))");
+    Query.exec("INSERT INTO borrow_record (reader_id, copy_id, "
+               "borrow_date, due_date) VALUES "
+               "(100, 101, date('now'), date('now', '+30 days'))");
 
     // 李四只借了普通书（30天后到期），没有紧急书
-    Query.exec(QString("INSERT INTO borrow_record (reader_id, copy_id, "
-                       "borrow_date, due_date) VALUES "
-                       "(101, 101, date('now'), date('now', '+30 days'))"));
+    Query.exec("INSERT INTO borrow_record (reader_id, copy_id, "
+               "borrow_date, due_date) VALUES "
+               "(101, 102, date('now'), date('now', '+30 days'))");;
 
     // 2. 调用 getRemindBorrowings(7)，查询7天内到期的书
     auto Res = LibrarySystem::getInstance().getRemindBorrowings(7);

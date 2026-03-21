@@ -22,7 +22,6 @@ private slots:
   void handleCellClicked(int Row, int Column);
   void handlePrevPageClicked();
   void handleNextPageClicked();
-  void handleSectionResized(int LogicalIndex, int OldSize, int NewSize);
 
 private:
   void loadData();
@@ -35,8 +34,7 @@ private:
   QVector<std::pair<BorrowDetailType, Reader>> FilteredResults;
   int CurrentPage = 1;
   static const int PageSize = 20;
-  bool IsResizing = false;        // 防止递归调用
-  bool ColumnsInitialized = false; // 列宽是否已初始化
+  bool ColumnsInitialized = false;
 };
 
 #endif // QUERYBOOKFORM_H
