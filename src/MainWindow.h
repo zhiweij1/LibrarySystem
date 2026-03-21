@@ -5,6 +5,7 @@
 #include "EditBookForm.h"
 #include "EditReaderForm.h"
 #include "QueryBookForm.h"
+#include "RemindReturnForm.h"
 #include "ReturnBookForm.h"
 
 #include <QMainWindow>
@@ -28,6 +29,7 @@ private:
   void handleBorrowBookButtonClicked();
   void handleReturnBookButtonClicked();
   void handleBookStatusQueryButtonClicked();
+  void handleRemindReturnButtonClicked();
   void handleEditBookButtonClicked();
   void handleEditReaderButtonClicked();
   void handleAboutClicked();
@@ -39,12 +41,13 @@ private:
   EditBookForm *EditBookPage;
   EditReaderForm *EditReaderPage;
   QueryBookForm *QueryBookPage;
+  RemindReturnForm *RemindReturnPage;
 
-  enum class Theme { red, orange, purple, green, brown };
+  enum class Theme { red, orange, purple, green, brown, blue };
   const QMap<Theme, QString> ThemeMap = {
       {Theme::red, "#FFB1B1"},    {Theme::orange, "#FFD8A8"},
       {Theme::purple, "#E2D1F9"}, {Theme::green, "#C1E1C1"},
-      {Theme::brown, "#A67C52"},
+      {Theme::brown, "#A67C52"},  {Theme::blue, "#B3D9FF"},
   };
   void cleanTheme();
   void changeTheme(const Theme T, QPushButton *Btn);

@@ -202,6 +202,163 @@ private slots:
     QVERIFY(!Res);
     QCOMPARE(Res.getErrCode(), ErrorCode::NotFound);
   }
+
+  void testGetRemindBorrowingsBasic() {
+    QSqlQuery Query;
+
+    // 1. 准备测试数据
+    // 清理旧数据
+    Query.exec("DELETE FROM borrow_record");
+    Query.exec("DELETE FROM bookcopy");
+    Query.exec("DELETE FROM bookinfo");
+    Query.exec("DELETE FROM reader");
+
+    // 插入读者
+    Query.exec("INSERT INTO reader (id, name, card_number, phone) VALUES "
+               "(100, '张三', 'CARD_100', '13800000001')");
+    Query.exec("INSERT INTO reader (id, name, card_number, phone) VALUES "
+               "(101, '李四', 'CARD_101', '13800000002')");
+
+    // 插入书籍信息
+    Query.exec("INSERT INTO bookinfo (id, title, author, publisher) VALUES "
+               "(100, '紧急书A', '作者A', '出版社A')");
+    Query.exec("INSERT INTO bookinfo (id, title, author, publisher) VALUES "
+               "(101, '普通书B', '作者B', '出版社B')");
+    Query.exec("INSERT INTO bookinfo (id, title, author, publisher) VALUES "
+               "(102, '李四的书', '作者C', '出版社C')");
+
+    // 插入书籍副本
+    Query.exec("INSERT INTO bookcopy (id, info_id, barcode, status) VALUES "
+               "(100, 100, 'BC_100', 1)"); // 紧急书
+    Query.exec("INSERT INTO bookcopy (id, info_id, barcode, status) VALUES "
+               "(101, 101, 'BC_101', 1)"); // 张三的普通书
+    Query.exec("INSERT INTO bookcopy (id, info_id, barcode, status) VALUES "
+               "(102, 102, 'BC_102', 1)"); // 李四的书
+
+    // 插入借阅记录
+    // 张三借了紧急书（3天后到期）+ 普通书（30天后到期）
+    Query.exec("INSERT INTO borrow_record (reader_id, copy_id, "
+               "borrow_date, due_date) VALUES "
+               "(100, 100, date('now'), date('now', '+3 days'))");
+    Query.exec("INSERT INTO borrow_record (reader_id, copy_id, "
+               "borrow_date, due_date) VALUES "
+               "(100, 101, date('now'), date('now', '+30 days'))");
+
+    // 李四只借了普通书（30天后到期），没有紧急书
+    Query.exec("INSERT INTO borrow_record (reader_id, copy_id, "
+               "borrow_date, due_date) VALUES "
+               "(101, 102, date('now'), date('now', '+30 days'))");
+
+    // 2. 调用 getRemindBorrowings(7)，查询7天内到期的书
+    auto Res = LibrarySystem::getInstance().getRemindBorrowings(7);
+    QVERIFY2(Res, Res.getErrMsg().toUtf8().constData());
+
+    auto Results = Res.getValue();
+
+    // 3. 验证：只返回张三（有紧急书），不返回李四（无紧急书）
+    QCOMPARE(Results.size(), 1);
+    QCOMPARE(Results[0].reader.Name, QString("张三"));
+
+    // 4. 验证：张三的紧急书和普通书分类正确
+    QCOMPARE(Results[0].urgentBooks.size(), 1);
+    QCOMPARE(Results[0].otherBooks.size(), 1);
+    QCOMPARE(Results[0].urgentBooks[0].Info.Title, QString("紧急书A"));
+    QCOMPARE(Results[0].otherBooks[0].Info.Title, QString("普通书B"));
+  }
+
+  void testGetRemindBorrowingsOverdue() {
+    QSqlQuery Query;
+
+    // 准备数据：已逾期的书
+    Query.exec("DELETE FROM borrow_record");
+    Query.exec("DELETE FROM bookcopy");
+    Query.exec("DELETE FROM bookinfo");
+    Query.exec("DELETE FROM reader");
+
+    Query.exec("INSERT INTO reader (id, name, card_number) VALUES "
+               "(200, '王五', 'CARD_200')");
+    Query.exec("INSERT INTO bookinfo (id, title) VALUES (200, '逾期书')");
+    Query.exec("INSERT INTO bookcopy (id, info_id, barcode, status) VALUES "
+               "(200, 200, 'BC_200', 1)");
+    // 5天前到期（已逾期）
+    Query.exec("INSERT INTO borrow_record (reader_id, copy_id, due_date) "
+               "VALUES (200, 200, date('now', '-5 days'))");
+
+    // 查询7天内到期的书（应包含已逾期的）
+    auto Res = LibrarySystem::getInstance().getRemindBorrowings(7);
+    QVERIFY2(Res, Res.getErrMsg().toUtf8().constData());
+
+    auto Results = Res.getValue();
+    QCOMPARE(Results.size(), 1);
+    QCOMPARE(Results[0].reader.Name, QString("王五"));
+    QCOMPARE(Results[0].urgentBooks.size(), 1); // 逾期书也是紧急书
+    QCOMPARE(Results[0].otherBooks.size(), 0);
+  }
+
+  void testGetRemindBorrowingsTodayDue() {
+    QSqlQuery Query;
+
+    // 准备数据：今天到期
+    Query.exec("DELETE FROM borrow_record");
+    Query.exec("DELETE FROM bookcopy");
+    Query.exec("DELETE FROM bookinfo");
+    Query.exec("DELETE FROM reader");
+
+    Query.exec("INSERT INTO reader (id, name, card_number) VALUES "
+               "(300, '赵六', 'CARD_300')");
+    Query.exec("INSERT INTO bookinfo (id, title) VALUES (300, '今日到期书')");
+    Query.exec("INSERT INTO bookcopy (id, info_id, barcode, status) VALUES "
+               "(300, 300, 'BC_300', 1)");
+    Query.exec("INSERT INTO borrow_record (reader_id, copy_id, due_date) "
+               "VALUES (300, 300, date('now'))");
+
+    // 查询0天内到期的书（只有今天到期或已逾期）
+    auto Res = LibrarySystem::getInstance().getRemindBorrowings(0);
+    QVERIFY2(Res, Res.getErrMsg().toUtf8().constData());
+
+    auto Results = Res.getValue();
+    QCOMPARE(Results.size(), 1);
+    QCOMPARE(Results[0].urgentBooks.size(), 1);
+  }
+
+  void testGetRemindBorrowingsCopyFieldsPopulated() {
+    QSqlQuery Query;
+
+    // 验证 BorrowDetailType::Copy 字段完整性
+    Query.exec("DELETE FROM borrow_record");
+    Query.exec("DELETE FROM bookcopy");
+    Query.exec("DELETE FROM bookinfo");
+    Query.exec("DELETE FROM reader");
+
+    Query.exec("INSERT INTO reader (id, name, card_number) VALUES "
+               "(400, '测试员', 'CARD_400')");
+    Query.exec("INSERT INTO bookinfo (id, title, author, publisher, cover_path) "
+               "VALUES (400, '测试书', '测试作者', '测试出版社', 'cover.jpg')");
+    Query.exec("INSERT INTO bookcopy (id, info_id, barcode, status) VALUES "
+               "(400, 400, 'BC_TEST_400', 1)"); // status = 1 (借出)
+    Query.exec("INSERT INTO borrow_record (reader_id, copy_id, due_date) "
+               "VALUES (400, 400, date('now', '+2 days'))");
+
+    auto Res = LibrarySystem::getInstance().getRemindBorrowings(7);
+    QVERIFY2(Res, Res.getErrMsg().toUtf8().constData());
+
+    auto Results = Res.getValue();
+    QCOMPARE(Results.size(), 1);
+
+    // 验证 Copy 字段完整性
+    const auto &Copy = Results[0].urgentBooks[0].Copy;
+    QCOMPARE(Copy.ID, 400);
+    QCOMPARE(Copy.Barcode, QString("BC_TEST_400"));
+    QCOMPARE(Copy.InfoID, 400);
+    QCOMPARE(Copy.Status, BookCopy::BS_Borrowed);
+
+    // 验证 Info 字段完整性
+    const auto &Info = Results[0].urgentBooks[0].Info;
+    QCOMPARE(Info.Title, QString("测试书"));
+    QCOMPARE(Info.Author, QString("测试作者"));
+    QCOMPARE(Info.Publisher, QString("测试出版社"));
+    QCOMPARE(Info.CoverPath, QString("cover.jpg"));
+  }
 };
 
 QTEST_GUILESS_MAIN(LibrarySystemTest)

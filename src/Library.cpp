@@ -536,3 +536,84 @@ ErrorOr<QString> LibrarySystem::getNewReaderCardID() {
   }
   return QString::number(NewID);
 }
+
+ErrorOr<QVector<LibrarySystem::ReaderBorrowInfo>>
+LibrarySystem::getRemindBorrowings(int Days) {
+  QMap<int, ReaderBorrowInfo> ReaderMap;
+
+  QSqlQuery Query(DB);
+
+  // 查询所有未归还的借书记录，按到期日期排序
+  QString Sql =
+      "SELECT "
+      "br.id, br.reader_id, br.borrow_date, br.due_date, "               // br (0-3)
+      "bc.id, bc.barcode, bc.info_id, bc.status, "                       // bc (4-7)
+      "bi.id, bi.title, bi.author, bi.publisher, bi.cover_path, "        // bi (8-12)
+      "r.id, r.name, r.card_number, r.phone "                            // r  (13-16)
+      "FROM borrow_record br "
+      "JOIN bookcopy bc ON br.copy_id = bc.id "
+      "JOIN bookinfo bi ON bc.info_id = bi.id "
+      "JOIN reader r ON br.reader_id = r.id "
+      "WHERE br.return_date IS NULL "
+      "ORDER BY br.due_date ASC";
+
+  if (!Query.exec(Sql)) {
+    return {ErrorCode::DatabaseError,
+            "查询催还数据失败: " + Query.lastError().text()};
+  }
+
+  QDate Today = QDate::currentDate();
+  QDate Deadline = Today.addDays(Days);
+
+  while (Query.next()) {
+    BorrowDetailType Detail;
+    Reader Rdr;
+
+    Detail.Record.ID = Query.value(0).toInt();
+    Detail.Record.ReaderId = Query.value(1).toInt();
+    Detail.Record.BorrowDate = Query.value(2).toDateTime();
+    Detail.Record.DueDate = Query.value(3).toDateTime();
+
+    Detail.Copy.ID = Query.value(4).toInt();
+    Detail.Copy.Barcode = Query.value(5).toString();
+    Detail.Copy.InfoID = Query.value(6).toInt();
+    Detail.Copy.Status = static_cast<BookCopy::BookStatus>(Query.value(7).toInt());
+    Detail.Record.CopyId = Detail.Copy.ID;
+
+    Detail.Info.ID = Query.value(8).toInt();
+    Detail.Info.Title = Query.value(9).toString();
+    Detail.Info.Author = Query.value(10).toString();
+    Detail.Info.Publisher = Query.value(11).toString();
+    Detail.Info.CoverPath = Query.value(12).toString();
+
+    Rdr.ID = Query.value(13).toInt();
+    Rdr.Name = Query.value(14).toString();
+    Rdr.CardNumber = Query.value(15).toString();
+    Rdr.PhoneNumber = Query.value(16).toString();
+
+    int ReaderId = Rdr.ID;
+    if (!ReaderMap.contains(ReaderId)) {
+      ReaderBorrowInfo Info;
+      Info.reader = Rdr;
+      ReaderMap[ReaderId] = Info;
+    }
+
+    QDate DueDate = Detail.Record.DueDate.date();
+    // 判断是否紧急（到期日期 <= Deadline 即为紧急，包括已逾期）
+    if (DueDate <= Deadline) {
+      ReaderMap[ReaderId].urgentBooks.append(Detail);
+    } else {
+      ReaderMap[ReaderId].otherBooks.append(Detail);
+    }
+  }
+
+  // 只返回有紧急借书的读者
+  QVector<ReaderBorrowInfo> Results;
+  for (auto &Info : ReaderMap) {
+    if (!Info.urgentBooks.isEmpty()) {
+      Results.append(Info);
+    }
+  }
+
+  return Results;
+}

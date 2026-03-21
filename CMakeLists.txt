@@ -39,6 +39,9 @@ set(UI_SOURCES
     src/QueryBookForm.h
     src/QueryBookForm.cpp
     src/QueryBookForm.ui
+    src/RemindReturnForm.h
+    src/RemindReturnForm.cpp
+    src/RemindReturnForm.ui
 )
 
 execute_process(

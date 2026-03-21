@@ -119,6 +119,14 @@ public:
   ErrorOr<QSet<QString>> checkExistingBarcodes(const QSet<QString> &Barcodes);
   ErrorOr<QString> getNewReaderCardID();
 
+  // 催还相关：获取近N天内到期的借书记录，按读者分组
+  struct ReaderBorrowInfo {
+    Reader reader;
+    QVector<BorrowDetailType> urgentBooks;   // 紧急（N天内到期）
+    QVector<BorrowDetailType> otherBooks;    // 其他借书
+  };
+  ErrorOr<QVector<ReaderBorrowInfo>> getRemindBorrowings(int Days);
+
 private:
   LibrarySystem() = default;
   ErrorOr<void> borrowBook(QSqlQuery &Query, const int ReaderID,

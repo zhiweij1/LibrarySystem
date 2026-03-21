@@ -83,6 +83,19 @@
         </widget>
        </item>
        <item>
+        <widget class="QPushButton" name="RemindReturnButton">
+         <property name="minimumSize">
+          <size>
+           <width>120</width>
+           <height>100</height>
+          </size>
+         </property>
+         <property name="text">
+          <string>催还管理</string>
+         </property>
+        </widget>
+       </item>
+       <item>
         <spacer name="verticalSpacer_2">
          <property name="orientation">
           <enum>Qt::Orientation::Vertical</enum>
