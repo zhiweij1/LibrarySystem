@@ -121,7 +121,6 @@ QGroupBox {
     margin-top: 12px;
     padding: 15px 10px 10px 10px;
     background-color: #FFFFFF;
-    font-weight: bold;
     color: #333333;
 }
 QGroupBox::title {
@@ -129,6 +128,7 @@ QGroupBox::title {
     left: 12px;
     padding: 0 5px;
     color: #333333;
+    font-weight: bold;
 }
 
 /* 滚动条 - 垂直 */

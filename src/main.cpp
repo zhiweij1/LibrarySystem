@@ -65,7 +65,9 @@ int main(int argc, char *argv[]) {
     App.setStyleSheet(QString::fromUtf8(StyleFile.readAll()));
     qInfo() << "样式表加载成功";
   } else {
-    qWarning() << "样式表加载失败，使用默认样式";
+    qWarning() << "样式表加载失败，使用默认样式"
+               << "，路径:" << StyleFile.fileName()
+               << "，错误:" << StyleFile.errorString();
   }
 
   qInfo() << "程序开始运行";
