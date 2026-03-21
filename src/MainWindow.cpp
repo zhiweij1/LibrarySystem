@@ -17,6 +17,8 @@ MainWindow::MainWindow(QWidget *Parent)
           &MainWindow::handleReturnBookButtonClicked);
   connect(UI->BookStatusQueryButton, &QPushButton::clicked, this,
           &MainWindow::handleBookStatusQueryButtonClicked);
+  connect(UI->RemindReturnButton, &QPushButton::clicked, this,
+          &MainWindow::handleRemindReturnButtonClicked);
   connect(UI->EditBookButton, &QPushButton::clicked, this,
           &MainWindow::handleEditBookButtonClicked);
   connect(UI->EditReaderButton, &QPushButton::clicked, this,
@@ -29,12 +31,14 @@ MainWindow::MainWindow(QWidget *Parent)
   EditBookPage = new EditBookForm(this);
   EditReaderPage = new EditReaderForm(this);
   QueryBookPage = new QueryBookForm(this);
+  RemindReturnPage = new RemindReturnForm(this);
 
-  UI->stackedWidget->addWidget(BorrowPage);     // Index 0
-  UI->stackedWidget->addWidget(ReturnPage);     // Index 1
-  UI->stackedWidget->addWidget(QueryBookPage);  // Index 2
-  UI->stackedWidget->addWidget(EditBookPage);   // Index 3
-  UI->stackedWidget->addWidget(EditReaderPage); // Index 4
+  UI->stackedWidget->addWidget(BorrowPage);      // Index 0
+  UI->stackedWidget->addWidget(ReturnPage);      // Index 1
+  UI->stackedWidget->addWidget(QueryBookPage);   // Index 2
+  UI->stackedWidget->addWidget(RemindReturnPage);// Index 3
+  UI->stackedWidget->addWidget(EditBookPage);    // Index 4
+  UI->stackedWidget->addWidget(EditReaderPage);  // Index 5
 
   UI->stackedWidget->setCurrentWidget(BorrowPage);
   changeTheme(Theme::purple, UI->BorrowBookButton);
@@ -75,6 +79,7 @@ void MainWindow::cleanTheme() {
   UI->BorrowBookButton->setStyleSheet("");
   UI->ReturnBookButton->setStyleSheet("");
   UI->BookStatusQueryButton->setStyleSheet("");
+  UI->RemindReturnButton->setStyleSheet("");
   UI->EditBookButton->setStyleSheet("");
   UI->EditReaderButton->setStyleSheet("");
 
@@ -104,6 +109,11 @@ void MainWindow::handleReturnBookButtonClicked() {
 void MainWindow::handleBookStatusQueryButtonClicked() {
   UI->stackedWidget->setCurrentWidget(QueryBookPage);
   changeTheme(Theme::brown, UI->BookStatusQueryButton);
+}
+
+void MainWindow::handleRemindReturnButtonClicked() {
+  UI->stackedWidget->setCurrentWidget(RemindReturnPage);
+  changeTheme(Theme::blue, UI->RemindReturnButton);
 }
 
 void MainWindow::handleEditBookButtonClicked() {
