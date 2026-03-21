@@ -58,8 +58,9 @@ void RemindReturnForm::clearCards() {
   QLayout *Layout = UI->cardLayout;
   while (Layout->count() > 1) {
     QLayoutItem *Item = Layout->takeAt(0);
-    if (Item->widget()) {
-      delete Item->widget();
+    if (QWidget *W = Item->widget()) {
+      W->setParent(nullptr);  // 先从布局移除
+      W->deleteLater();       // 延迟删除，让事件队列处理完
     }
     delete Item;
   }
