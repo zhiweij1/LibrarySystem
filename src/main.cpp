@@ -2,8 +2,11 @@
 #include "MainWindow.h"
 
 #include <QApplication>
+#include <QDir>
 #include <QFile>
+#include <QFontDatabase>
 #include <QMessageBox>
+#include <QStandardPaths>
 
 namespace {
 QFile *OutFilePtr = nullptr;
@@ -41,7 +44,14 @@ int main(int argc, char *argv[]) {
   App.setApplicationVersion(GIT_REVISION);
   qDebug() << "App Version:" << qApp->applicationVersion();
 
-  QFile OutFile("log.txt");
+  // 数据目录：用户文档目录下的 LibrarySystemData 文件夹
+  QString DataDir =
+      QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) +
+      "/LibrarySystemData";
+  QDir().mkpath(DataDir);
+
+  // 日志文件
+  QFile OutFile(DataDir + "/log.txt");
   if (!OutFile.open(QIODevice::WriteOnly | QIODevice::Append)) {
     QMessageBox::critical(nullptr, "", "错误：日志文件无法打开，程序将退出。");
     exit(-1);
@@ -49,13 +59,23 @@ int main(int argc, char *argv[]) {
   OutFilePtr = &OutFile;
   qInstallMessageHandler(messageHandler);
 
-  if (!LibrarySystem::getInstance().init("library.db")) {
+  // 数据库文件
+  QString DBPath = DataDir + "/library.db";
+  if (!LibrarySystem::getInstance().init(DBPath)) {
     QMessageBox::critical(nullptr, "", "错误：数据库无法启动，程序将退出。");
     exit(-2);
   }
 
+  // 字体设置：尝试使用可用字体
   QFont Font;
-  Font.setFamily("Microsoft YaHei");
+  QStringList PreferredFonts = {"Microsoft YaHei", "微软雅黑", "PingFang SC",
+                                "Noto Sans CJK SC", "SimHei", "黑体"};
+  for (const auto &Family : PreferredFonts) {
+    if (QFontDatabase::hasFamily(Family)) {
+      Font.setFamily(Family);
+      break;
+    }
+  }
   Font.setPointSize(16);
   App.setFont(Font);
 

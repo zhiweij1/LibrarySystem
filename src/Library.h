@@ -94,6 +94,9 @@ enum ReaderStatus {
 class LibrarySystem : public QObject {
   Q_OBJECT
 
+signals:
+  void importProgress(int Current, int Total);
+
 public:
   static LibrarySystem &getInstance() {
     static LibrarySystem Instance;
@@ -130,6 +133,12 @@ public:
   };
   ErrorOr<QVector<ReaderBorrowInfo>> getRemindBorrowings(int Days);
 
+  // 数据库备份相关
+  QString getDatabasePath() const { return DBPath; }
+  QString getDataDir() const { return DataDir; }
+  void closeDatabase() { DB.close(); }
+  bool openDatabase() { return DB.open(); }
+
 private:
   LibrarySystem() = default;
   ErrorOr<void> borrowBook(QSqlQuery &Query, const int ReaderID,
@@ -138,6 +147,8 @@ private:
   ErrorOr<void> renewBook(QSqlQuery &Query, const int RecordID);
 
   QSqlDatabase DB;
+  QString DBPath;   // 数据库文件路径
+  QString DataDir;  // 数据目录路径
 };
 
 #endif // LIBRARY_H

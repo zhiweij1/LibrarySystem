@@ -5,6 +5,7 @@
 #include <QCoreApplication>
 #include <QDebug>
 #include <QDir>
+#include <QFileInfo>
 #include <QSqlError>
 #include <QSqlQuery>
 
@@ -25,7 +26,7 @@ ErrorOr<void> LibrarySystem::importFromCSV(const QString &FilePath) {
     return ParseRes;
   }
 
-  QString CoverTargetDir = QCoreApplication::applicationDirPath() + "/covers/";
+  QString CoverTargetDir = DataDir + "/covers/";
   QDir().mkpath(CoverTargetDir);
 
   // 2. 开启事务
@@ -34,7 +35,11 @@ ErrorOr<void> LibrarySystem::importFromCSV(const QString &FilePath) {
   }
 
   QSqlQuery Query(DB);
+  int Total = Parser.Results.size();
+  int Current = 0;
   for (const auto &Data : std::as_const(Parser.Results)) {
+    ++Current;
+    emit importProgress(Current, Total);
     // 拼接封面路径
     QString SourcePath =
         QFileInfo(FilePath).absolutePath() + "/photos/" + Data.CSVID + ".jpg";
@@ -90,6 +95,9 @@ ErrorOr<void> LibrarySystem::importFromCSV(const QString &FilePath) {
 }
 
 ErrorOr<void> LibrarySystem::init(const QString &DBPath) {
+  this->DBPath = DBPath;
+  this->DataDir = QFileInfo(DBPath).absolutePath();  // 数据目录路径
+
   if (QSqlDatabase::contains("qt_sql_default_connection")) {
     DB = QSqlDatabase::database("qt_sql_default_connection");
   } else {
@@ -214,6 +222,17 @@ LibrarySystem::getReaderByCardNumber(const QString &CardNumber) {
 
 ErrorOr<void> LibrarySystem::borrowBook(QSqlQuery &Query, const int ReaderID,
                                         const int CopyID) {
+  // 检查读者状态（是否已注销）
+  Query.prepare("SELECT is_inactive FROM reader WHERE id = :rid");
+  Query.bindValue(":rid", ReaderID);
+  if (!Query.exec())
+    return {ErrorCode::DatabaseError,
+            "查询读者状态失败: " + Query.lastError().text()};
+  if (!Query.next())
+    return {ErrorCode::NotFound, "读者不存在"};
+  if (Query.value(0).toInt() == RS_InActive)
+    return {ErrorCode::InvalidStatus, "该读者已注销，无法借书"};
+
   // 检查书籍当前状态
   Query.prepare("SELECT status FROM bookcopy WHERE id = :cid");
   Query.bindValue(":cid", CopyID);
