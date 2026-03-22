@@ -134,15 +134,12 @@ public:
   };
   ErrorOr<QVector<ReaderBorrowInfo>> getRemindBorrowings(int Days);
 
-  // 数据库备份相关
+  // 数据库路径
   QString getDatabasePath() const { return DBPath; }
   QString getDataDir() const { return DataDir; }
-  void closeDatabase() { DB.close(); }
-  bool openDatabase() {
-    if (!DB.open()) return false;
-    QSqlQuery Pragma(DB);
-    return Pragma.exec("PRAGMA foreign_keys = ON;");
-  }
+
+  // 备份数据库到指定路径（内部管理 close/open 生命周期）
+  ErrorOr<void> backupDatabaseTo(const QString &BackupPath);
 
 private:
   LibrarySystem() = default;
@@ -150,6 +147,13 @@ private:
                            const int CopyID);
   ErrorOr<void> returnBook(QSqlQuery &Query, const int RecordID);
   ErrorOr<void> renewBook(QSqlQuery &Query, const int RecordID);
+
+  void closeDatabase() { DB.close(); }
+  bool openDatabase() {
+    if (!DB.open()) return false;
+    QSqlQuery Pragma(DB);
+    return Pragma.exec("PRAGMA foreign_keys = ON;");
+  }
 
   QSqlDatabase DB;
   QString DBPath;   // 数据库文件路径

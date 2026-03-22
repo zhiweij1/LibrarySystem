@@ -44,10 +44,10 @@ void messageHandler(QtMsgType Type, const QMessageLogContext &Context,
 } // namespace
 
 void dailyBackup() {
-  QSettings Settings(
-      QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) +
-          "/LibrarySystemData/settings.ini",
-      QSettings::IniFormat);
+  auto &Lib = LibrarySystem::getInstance();
+  QString DataDir = Lib.getDataDir();
+
+  QSettings Settings(DataDir + "/settings.ini", QSettings::IniFormat);
 
   QString Today = QDate::currentDate().toString(Qt::ISODate);
   QString LastBackupDate = Settings.value("backup/lastDate").toString();
@@ -56,40 +56,34 @@ void dailyBackup() {
     return;  // 今天已经备份过
   }
 
-  QString BackupDir =
-      QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) +
-      "/LibrarySystemData/backups";
+  QString BackupDir = DataDir + "/backups";
   QDir().mkpath(BackupDir);
 
   QString BackupPath = BackupDir + "/backup_" +
                        QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss") +
                        ".db";
 
-  LibrarySystem::getInstance().closeDatabase();
-  bool Success = QFile::copy(LibrarySystem::getInstance().getDatabasePath(),
-                              BackupPath);
-  if (!LibrarySystem::getInstance().openDatabase()) {
-    qCritical() << "备份后重新打开数据库失败";
-    QMessageBox::critical(nullptr, "", "错误：数据库重新打开失败，程序将退出。");
+  auto Res = Lib.backupDatabaseTo(BackupPath);
+  if (!Res) {
+    qCritical() << "每日备份失败:" << Res.getErrMsg();
+    QMessageBox::critical(nullptr, "",
+                          "错误：数据库备份失败 - " + Res.getErrMsg() +
+                              "，程序将退出。");
     exit(-3);
   }
 
-  if (Success) {
-    qInfo() << "每日备份成功:" << BackupPath;
-    Settings.setValue("backup/lastDate", Today);
+  qInfo() << "每日备份成功:" << BackupPath;
+  Settings.setValue("backup/lastDate", Today);
 
-    // 复制到坚果云同步目录（如果已配置）
-    QString CloudDir = Settings.value("backup/cloud_dir").toString();
-    if (!CloudDir.isEmpty() && QDir(CloudDir).exists()) {
-      QString CloudPath = CloudDir + "/" + QFileInfo(BackupPath).fileName();
-      if (QFile::copy(BackupPath, CloudPath)) {
-        qInfo() << "已复制到云同步目录:" << CloudPath;
-      } else {
-        qWarning() << "复制到云同步目录失败";
-      }
+  // 复制到坚果云同步目录（如果已配置）
+  QString CloudDir = Settings.value("backup/cloud_dir").toString();
+  if (!CloudDir.isEmpty() && QDir(CloudDir).exists()) {
+    QString CloudPath = CloudDir + "/" + QFileInfo(BackupPath).fileName();
+    if (QFile::copy(BackupPath, CloudPath)) {
+      qInfo() << "已复制到云同步目录:" << CloudPath;
+    } else {
+      qWarning() << "复制到云同步目录失败";
     }
-  } else {
-    qWarning() << "每日备份失败";
   }
 }
 

@@ -8,7 +8,6 @@
 #include <QLabel>
 #include <QMouseEvent>
 #include <QPixmap>
-#include <QTransform>
 #include <QVBoxLayout>
 
 inline QPixmap loadPixmapWithExif(const QString &Path) {

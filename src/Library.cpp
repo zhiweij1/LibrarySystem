@@ -5,9 +5,22 @@
 #include <QCoreApplication>
 #include <QDebug>
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QSqlError>
 #include <QSqlQuery>
+
+ErrorOr<void> LibrarySystem::backupDatabaseTo(const QString &BackupPath) {
+  closeDatabase();
+  bool Success = QFile::copy(DBPath, BackupPath);
+  if (!openDatabase()) {
+    return {ErrorCode::DatabaseError, "备份后重新打开数据库失败"};
+  }
+  if (!Success) {
+    return {ErrorCode::InternalError, "复制数据库文件失败"};
+  }
+  return {};
+}
 
 ErrorOr<bool> LibrarySystem::isBarcodeExists(const QString &Barcode) {
   QSqlQuery Query(DB);
