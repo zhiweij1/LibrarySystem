@@ -222,17 +222,6 @@ LibrarySystem::getReaderByCardNumber(const QString &CardNumber) {
 
 ErrorOr<void> LibrarySystem::borrowBook(QSqlQuery &Query, const int ReaderID,
                                         const int CopyID) {
-  // 检查读者状态（是否已注销）
-  Query.prepare("SELECT is_inactive FROM reader WHERE id = :rid");
-  Query.bindValue(":rid", ReaderID);
-  if (!Query.exec())
-    return {ErrorCode::DatabaseError,
-            "查询读者状态失败: " + Query.lastError().text()};
-  if (!Query.next())
-    return {ErrorCode::NotFound, "读者不存在"};
-  if (Query.value(0).toInt() == RS_InActive)
-    return {ErrorCode::InvalidStatus, "该读者已注销，无法借书"};
-
   // 检查书籍当前状态
   Query.prepare("SELECT status FROM bookcopy WHERE id = :cid");
   Query.bindValue(":cid", CopyID);
@@ -279,6 +268,18 @@ ErrorOr<void> LibrarySystem::borrowBooks(int ReaderID,
   }
 
   QSqlQuery Query(DB);
+
+  // 检查读者状态（只查询一次）
+  Query.prepare("SELECT is_inactive FROM reader WHERE id = :rid");
+  Query.bindValue(":rid", ReaderID);
+  if (!Query.exec())
+    return {ErrorCode::DatabaseError,
+            "查询读者状态失败: " + Query.lastError().text()};
+  if (!Query.next())
+    return {ErrorCode::NotFound, "读者不存在"};
+  if (Query.value(0).toInt() == RS_InActive)
+    return {ErrorCode::InvalidStatus, "该读者已注销，无法借书"};
+
   for (int CID : CopyIDs) {
     auto Res = borrowBook(Query, ReaderID, CID);
     if (!Res) {

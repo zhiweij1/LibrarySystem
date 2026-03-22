@@ -2,16 +2,21 @@
 #include "MainWindow.h"
 
 #include <QApplication>
+#include <QDate>
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QFontDatabase>
 #include <QMessageBox>
+#include <QSettings>
 #include <QStandardPaths>
 
 namespace {
 QFile *OutFilePtr = nullptr;
 void messageHandler(QtMsgType Type, const QMessageLogContext &Context,
                     const QString &Msg) {
+  if (!OutFilePtr) return;
   QString Txt;
   QString Time = QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss");
 
@@ -38,6 +43,56 @@ void messageHandler(QtMsgType Type, const QMessageLogContext &Context,
 }
 } // namespace
 
+void dailyBackup() {
+  QSettings Settings(
+      QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) +
+          "/LibrarySystemData/settings.ini",
+      QSettings::IniFormat);
+
+  QString Today = QDate::currentDate().toString(Qt::ISODate);
+  QString LastBackupDate = Settings.value("backup/lastDate").toString();
+
+  if (LastBackupDate == Today) {
+    return;  // 今天已经备份过
+  }
+
+  QString BackupDir =
+      QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) +
+      "/LibrarySystemData/backups";
+  QDir().mkpath(BackupDir);
+
+  QString BackupPath = BackupDir + "/backup_" +
+                       QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss") +
+                       ".db";
+
+  LibrarySystem::getInstance().closeDatabase();
+  bool Success = QFile::copy(LibrarySystem::getInstance().getDatabasePath(),
+                              BackupPath);
+  if (!LibrarySystem::getInstance().openDatabase()) {
+    qCritical() << "备份后重新打开数据库失败";
+    QMessageBox::critical(nullptr, "", "错误：数据库重新打开失败，程序将退出。");
+    exit(-3);
+  }
+
+  if (Success) {
+    qInfo() << "每日备份成功:" << BackupPath;
+    Settings.setValue("backup/lastDate", Today);
+
+    // 复制到坚果云同步目录（如果已配置）
+    QString CloudDir = Settings.value("backup/cloud_dir").toString();
+    if (!CloudDir.isEmpty() && QDir(CloudDir).exists()) {
+      QString CloudPath = CloudDir + "/" + QFileInfo(BackupPath).fileName();
+      if (QFile::copy(BackupPath, CloudPath)) {
+        qInfo() << "已复制到云同步目录:" << CloudPath;
+      } else {
+        qWarning() << "复制到云同步目录失败";
+      }
+    }
+  } else {
+    qWarning() << "每日备份失败";
+  }
+}
+
 int main(int argc, char *argv[]) {
   QApplication App(argc, argv);
 
@@ -50,13 +105,13 @@ int main(int argc, char *argv[]) {
       "/LibrarySystemData";
   QDir().mkpath(DataDir);
 
-  // 日志文件
-  QFile OutFile(DataDir + "/log.txt");
-  if (!OutFile.open(QIODevice::WriteOnly | QIODevice::Append)) {
+  // 日志文件（堆分配，确保生命周期覆盖整个程序）
+  QFile *OutFile = new QFile(DataDir + "/log.txt");
+  if (!OutFile->open(QIODevice::WriteOnly | QIODevice::Append)) {
     QMessageBox::critical(nullptr, "", "错误：日志文件无法打开，程序将退出。");
     exit(-1);
   }
-  OutFilePtr = &OutFile;
+  OutFilePtr = OutFile;
   qInstallMessageHandler(messageHandler);
 
   // 数据库文件
@@ -91,7 +146,15 @@ int main(int argc, char *argv[]) {
   }
 
   qInfo() << "程序开始运行";
+
+  // 每天第一次打开程序时备份（在创建 UI 之前，避免数据库关闭影响模型）
+  dailyBackup();
+
   MainWindow W;
   W.show();
-  return App.exec();
+  int Ret = App.exec();
+  qInstallMessageHandler(nullptr);
+  OutFilePtr = nullptr;
+  delete OutFile;
+  return Ret;
 }

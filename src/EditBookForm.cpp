@@ -40,11 +40,12 @@ void EditBookForm::handleLoadFromCSVButtonClicked() {
     return;
   }
 
-  QProgressDialog Progress("正在导入书籍...", "取消", 0, 0, this);
+  QProgressDialog Progress("正在导入书籍...", QString(), 0, 0, this);
   Progress.setWindowModality(Qt::WindowModal);
   Progress.setMinimumDuration(0);
   Progress.setAutoClose(false);
   Progress.setAutoReset(false);
+  Progress.setCancelButton(nullptr);  // 不显示取消按钮（未实现取消功能）
 
   connect(&LibrarySystem::getInstance(), &LibrarySystem::importProgress,
           &Progress, [&Progress](int Current, int Total) {

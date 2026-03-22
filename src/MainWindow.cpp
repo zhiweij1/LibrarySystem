@@ -4,15 +4,9 @@
 #include "BorrowBookForm.h"
 #include "EditBookForm.h"
 #include "EditReaderForm.h"
-#include "Library.h"
 #include "ReturnBookForm.h"
 
-#include <QDateTime>
-#include <QDir>
-#include <QFile>
 #include <QMessageBox>
-#include <QSettings>
-#include <QStandardPaths>
 
 MainWindow::MainWindow(QWidget *Parent)
     : QMainWindow(Parent), UI(new Ui::MainWindow) {
@@ -49,9 +43,6 @@ MainWindow::MainWindow(QWidget *Parent)
 
   UI->stackedWidget->setCurrentWidget(BorrowPage);
   changeTheme(Theme::purple, UI->BorrowBookButton);
-
-  // 每天第一次打开程序时备份
-  dailyBackup();
 }
 
 MainWindow::~MainWindow() { delete UI; }
@@ -150,48 +141,3 @@ void MainWindow::handleEditReaderButtonClicked() {
   changeTheme(Theme::red, UI->EditReaderButton);
 }
 
-void MainWindow::dailyBackup() {
-  QSettings Settings(
-      QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) +
-          "/LibrarySystemData/settings.ini",
-      QSettings::IniFormat);
-
-  QString Today = QDate::currentDate().toString(Qt::ISODate);
-  QString LastBackupDate = Settings.value("backup/lastDate").toString();
-
-  if (LastBackupDate == Today) {
-    return;  // 今天已经备份过
-  }
-
-  QString BackupDir =
-      QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) +
-      "/LibrarySystemData/backups";
-  QDir().mkpath(BackupDir);
-
-  QString BackupPath = BackupDir + "/backup_" +
-                       QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss") +
-                       ".db";
-
-  LibrarySystem::getInstance().closeDatabase();
-  bool Success = QFile::copy(LibrarySystem::getInstance().getDatabasePath(),
-                              BackupPath);
-  LibrarySystem::getInstance().openDatabase();
-
-  if (Success) {
-    qInfo() << "每日备份成功:" << BackupPath;
-    Settings.setValue("backup/lastDate", Today);
-
-    // 复制到坚果云同步目录（如果已配置）
-    QString CloudDir = Settings.value("backup/cloud_dir").toString();
-    if (!CloudDir.isEmpty() && QDir(CloudDir).exists()) {
-      QString CloudPath = CloudDir + "/" + QFileInfo(BackupPath).fileName();
-      if (QFile::copy(BackupPath, CloudPath)) {
-        qInfo() << "已复制到云同步目录:" << CloudPath;
-      } else {
-        qWarning() << "复制到云同步目录失败";
-      }
-    }
-  } else {
-    qWarning() << "每日备份失败";
-  }
-}

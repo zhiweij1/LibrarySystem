@@ -4,6 +4,7 @@
 #include <QDateTime>
 #include <QObject>
 #include <QSqlDatabase>
+#include <QSqlQuery>
 #include <QString>
 
 enum class ErrorCode {
@@ -137,7 +138,11 @@ public:
   QString getDatabasePath() const { return DBPath; }
   QString getDataDir() const { return DataDir; }
   void closeDatabase() { DB.close(); }
-  bool openDatabase() { return DB.open(); }
+  bool openDatabase() {
+    if (!DB.open()) return false;
+    QSqlQuery Pragma(DB);
+    return Pragma.exec("PRAGMA foreign_keys = ON;");
+  }
 
 private:
   LibrarySystem() = default;

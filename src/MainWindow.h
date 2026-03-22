@@ -33,7 +33,6 @@ private:
   void handleEditBookButtonClicked();
   void handleEditReaderButtonClicked();
   void handleAboutClicked();
-  void dailyBackup();
 
   Ui::MainWindow *UI;
 
