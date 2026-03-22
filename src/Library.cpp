@@ -272,13 +272,19 @@ ErrorOr<void> LibrarySystem::borrowBooks(int ReaderID,
   // 检查读者状态（只查询一次）
   Query.prepare("SELECT is_inactive FROM reader WHERE id = :rid");
   Query.bindValue(":rid", ReaderID);
-  if (!Query.exec())
+  if (!Query.exec()) {
+    DB.rollback();
     return {ErrorCode::DatabaseError,
             "查询读者状态失败: " + Query.lastError().text()};
-  if (!Query.next())
+  }
+  if (!Query.next()) {
+    DB.rollback();
     return {ErrorCode::NotFound, "读者不存在"};
-  if (Query.value(0).toInt() == RS_InActive)
+  }
+  if (Query.value(0).toInt() == RS_InActive) {
+    DB.rollback();
     return {ErrorCode::InvalidStatus, "该读者已注销，无法借书"};
+  }
 
   for (int CID : CopyIDs) {
     auto Res = borrowBook(Query, ReaderID, CID);
