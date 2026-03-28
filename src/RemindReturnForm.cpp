@@ -79,11 +79,11 @@ QWidget *RemindReturnForm::createReaderCard(const LibrarySystem::ReaderBorrowInf
   // 顶部：读者信息
   QHBoxLayout *HeaderLayout = new QHBoxLayout();
 
-  QLabel *ReaderLabel = new QLabel(
-      QString("读者：%1  |  电话：%2")
-          .arg(Info.reader.Name)
-          .arg(Info.reader.PhoneNumber));
-  ReaderLabel->setStyleSheet("background: transparent; font-weight: bold; font-size: 14px;");
+  QLabel *ReaderLabel = new QLabel(QString("卡号：%1，姓名：%2，电话：%3")
+                                       .arg(Info.reader.CardNumber)
+                                       .arg(Info.reader.Name)
+                                       .arg(Info.reader.PhoneNumber));
+  ReaderLabel->setStyleSheet("font-size: 12px;");
   HeaderLayout->addWidget(ReaderLabel);
 
   HeaderLayout->addStretch();
