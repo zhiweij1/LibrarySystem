@@ -41,11 +41,11 @@ EditReaderForm::EditReaderForm(QWidget *Parent)
   UI->ReaderTableView->setModel(Model);
   UI->ReaderTableView->setSelectionBehavior(QAbstractItemView::SelectRows);
   UI->ReaderTableView->setEditTriggers(QAbstractItemView::NoEditTriggers);
-  UI->ReaderTableView->setColumnHidden(0, true);  // hide ID
-  UI->ReaderTableView->setColumnHidden(1, false); // show name
-  UI->ReaderTableView->setColumnHidden(2, false); // show card number
-  UI->ReaderTableView->setColumnHidden(3, false); // show phone number
-  UI->ReaderTableView->setColumnHidden(4, true);  // hide status
+  UI->ReaderTableView->setColumnHidden(0, true);  // 隐藏 ID
+  UI->ReaderTableView->setColumnHidden(1, false); // 显示姓名
+  UI->ReaderTableView->setColumnHidden(2, false); // 显示卡号
+  UI->ReaderTableView->setColumnHidden(3, false); // 显示电话
+  UI->ReaderTableView->setColumnHidden(4, true);  // 隐藏状态
   UI->ReaderTableView->verticalHeader()->setVisible(false);
   Model->setHeaderData(1, Qt::Horizontal, "姓名");
   Model->setHeaderData(2, Qt::Horizontal, "卡号");

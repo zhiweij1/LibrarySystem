@@ -126,17 +126,17 @@ ErrorOr<void> LibrarySystem::init(const QString &DBPath) {
 
   QSqlQuery Query(DB);
 
-  // BookInfo
+  // 书籍信息表
   bool OK = Query.exec("CREATE TABLE IF NOT EXISTS bookinfo ("
                        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
                        "title TEXT NOT NULL,"
                        "author TEXT,"
                        "publisher TEXT,"
-                       "category_id TEXT," // CLC
+                       "category_id TEXT," // 中国图书馆分类号
                        "cover_path TEXT"
                        ")");
 
-  // BookCopy
+  // 书籍副本表
   OK &= Query.exec(
       QString("CREATE TABLE IF NOT EXISTS bookcopy ("
               "id INTEGER PRIMARY KEY AUTOINCREMENT,"
@@ -147,7 +147,7 @@ ErrorOr<void> LibrarySystem::init(const QString &DBPath) {
               ")")
           .arg(BookCopy::BookStatus::BS_InLibrary));
 
-  // Reader
+  // 读者表
   OK &= Query.exec(QString("CREATE TABLE IF NOT EXISTS reader ("
                            "id INTEGER PRIMARY KEY AUTOINCREMENT,"
                            "name TEXT NOT NULL,"
@@ -156,7 +156,7 @@ ErrorOr<void> LibrarySystem::init(const QString &DBPath) {
                            "is_inactive INTEGER DEFAULT %1)")
                        .arg(RS_Active));
 
-  // BorrowRecord
+  // 借阅记录表
   OK &= Query.exec("CREATE TABLE IF NOT EXISTS borrow_record ("
                    "id INTEGER PRIMARY KEY AUTOINCREMENT,"
                    "reader_id INTEGER,"
@@ -335,7 +335,7 @@ LibrarySystem::getBorrowingDetailsByReader(int ReaderId) {
     while (Query.next()) {
       BorrowDetailType Detail;
 
-      // fill BorrowRecord (0-5)
+      // 填充 BorrowRecord (0-5)
       Detail.Record.ID = Query.value(0).toInt();
       Detail.Record.ReaderId = Query.value(1).toInt();
       Detail.Record.CopyId = Query.value(2).toInt();
@@ -343,14 +343,14 @@ LibrarySystem::getBorrowingDetailsByReader(int ReaderId) {
       Detail.Record.DueDate = Query.value(4).toDateTime();
       Detail.Record.ReturnDate = Query.value(5).toDateTime();
 
-      // fill BookCopy (6-9)
+      // 填充 BookCopy (6-9)
       Detail.Copy.ID = Query.value(6).toInt();
       Detail.Copy.InfoID = Query.value(7).toInt();
       Detail.Copy.Barcode = Query.value(8).toString();
       Detail.Copy.Status =
           static_cast<BookCopy::BookStatus>(Query.value(9).toInt());
 
-      // fill BookInfo (10-14)
+      // 填充 BookInfo (10-14)
       Detail.Info.ID = Query.value(10).toInt();
       Detail.Info.Title = Query.value(11).toString();
       Detail.Info.Author = Query.value(12).toString();

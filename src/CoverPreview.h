@@ -22,24 +22,24 @@ inline QPixmap loadPixmapWithExif(const QString &Path) {
 
 class CoverPreviewLabel : public QLabel {
 public:
-  explicit CoverPreviewLabel(const QString &coverPath, int thumbWidth,
-                             int thumbHeight, QWidget *parent = nullptr)
-      : QLabel(parent), CoverPath(coverPath) {
-    QString FullPath = LibrarySystem::getInstance().getDataDir() + "/" + coverPath;
+  explicit CoverPreviewLabel(const QString &CoverPath, int ThumbWidth,
+                             int ThumbHeight, QWidget *Parent = nullptr)
+      : QLabel(Parent), CoverPath(CoverPath) {
+    QString FullPath = LibrarySystem::getInstance().getDataDir() + "/" + CoverPath;
     QPixmap Pix = loadPixmapWithExif(FullPath);
     if (Pix.isNull()) {
       setText("无封面");
       setStyleSheet(
           "background-color: #E0E0E0; color: #999; font-size: 11px;");
     } else {
-      setPixmap(Pix.scaled(thumbWidth, thumbHeight, Qt::KeepAspectRatio,
+      setPixmap(Pix.scaled(ThumbWidth, ThumbHeight, Qt::KeepAspectRatio,
                            Qt::SmoothTransformation));
       setCursor(Qt::PointingHandCursor);
     }
     setAlignment(Qt::AlignCenter);
   }
 
-  QString coverPath() const { return CoverPath; }
+  QString getCoverPath() const { return CoverPath; }
 
 protected:
   void mousePressEvent(QMouseEvent *event) override {

@@ -23,7 +23,6 @@ private:
 
   Ui::BorrowBookForm *UI;
   std::optional<Reader> RdrOpt = std::nullopt;
-  bool IsBookSelected = false;
 };
 
 #endif // BORROWBOOKFORM_H

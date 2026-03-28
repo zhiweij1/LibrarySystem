@@ -73,8 +73,8 @@ void ReturnBookForm::handleReaderNumberPushButtonClicked() {
     UI->BorrowingTableWidget->setCellWidget(Row, 0, ImgLabel);
 
     QTableWidgetItem *BarcodeItem = new QTableWidgetItem(Detail.Copy.Barcode);
-    BarcodeItem->setData(Qt::UserRole, Detail.Record.ID);   // recod ID
-    BarcodeItem->setData(Qt::UserRole + 1, Detail.Copy.ID); // copy ID
+    BarcodeItem->setData(Qt::UserRole, Detail.Record.ID);   // 借阅记录 ID
+    BarcodeItem->setData(Qt::UserRole + 1, Detail.Copy.ID); // 副本 ID
     UI->BorrowingTableWidget->setItem(Row, 1, BarcodeItem);
 
     UI->BorrowingTableWidget->setItem(Row, 2,
