@@ -50,6 +50,17 @@ ErrorOr<void> TSVParser::parse(const QString &Path) {
     }
 
     // 字段：书名 作者 出版社 数量 图片名 条码号
+    QString ImageName = Fields[4].trimmed();
+    if (ImageName.isEmpty()) {
+      return {ErrorCode::ValidationError,
+              QString("第 %1 行错误：图片名为空").arg(LineNumber)};
+    }
+    if (ImageName.contains('/') || ImageName.contains('\\') ||
+        ImageName.contains("..")) {
+      return {ErrorCode::ValidationError,
+              QString("第 %1 行错误：图片名包含非法字符").arg(LineNumber)};
+    }
+
     bool OK;
     int ExpectedCount = Fields[3].toInt(&OK);
     if (!OK || ExpectedCount < 0) {
@@ -83,14 +94,27 @@ ErrorOr<void> TSVParser::parse(const QString &Path) {
     if (!Aggregated.contains(AggKey)) {
       Aggregated.insert(AggKey,
                         {LineNumber,
-                         RawData(Fields[4].trimmed(), Fields[0].trimmed(),
+                         RawData(ImageName, Fields[0].trimmed(),
                                  Fields[1].trimmed(), Fields[2].trimmed(),
                                  ExpectedCount, {Barcode}),
                          {Barcode}});
     } else {
       auto It = Aggregated.find(AggKey);
+      // 校验同一条码前缀下的书目字段是否与首行一致
+      auto &Existing = It.value().Record;
+      if (Existing.Title != Fields[0].trimmed() ||
+          Existing.Author != Fields[1].trimmed() ||
+          Existing.Publisher != Fields[2].trimmed() ||
+          Existing.Count != ExpectedCount ||
+          Existing.ImageName != ImageName) {
+        ErrorMessages.append(
+            QString("第 %1 行错误：与第 %2 行条码前缀相同，但书目信息或册数不一致")
+                .arg(LineNumber)
+                .arg(It.value().Line));
+        continue;
+      }
       It.value().Barcodes.append(Barcode);
-      It.value().Record.Barcodes.append(Barcode);
+      Existing.Barcodes.append(Barcode);
     }
   }
 
@@ -98,7 +122,8 @@ ErrorOr<void> TSVParser::parse(const QString &Path) {
   for (auto It = Aggregated.begin(); It != Aggregated.end(); ++It) {
     if (It.value().Barcodes.size() != It.value().Record.Count) {
       ErrorMessages.append(
-          QString("书籍 [%1] 条码数(%2)与册数(%3)不符")
+          QString("第 %1 行书籍 [%2] 条码数(%3)与册数(%4)不符")
+              .arg(It.value().Line)
               .arg(It.value().Record.Title)
               .arg(It.value().Barcodes.size())
               .arg(It.value().Record.Count));
@@ -139,7 +164,8 @@ ErrorOr<void> TSVParser::parse(const QString &Path) {
     bool HasDatabaseConflict = false;
     for (const QString &Code : Temp.Barcodes) {
       if (ExistingInDB.contains(Code.trimmed())) {
-        ErrorMessages.append(QString("书籍 [%1]：条码 [%2] 已在系统库中存在")
+        ErrorMessages.append(QString("第 %1 行书籍 [%2]：条码 [%3] 已在系统库中存在")
+                                 .arg(Temp.Line)
                                  .arg(Temp.Record.Title, Code.trimmed()));
         HasDatabaseConflict = true;
       }
