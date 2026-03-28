@@ -1,5 +1,5 @@
-#ifndef CSVPARSER_H
-#define CSVPARSER_H
+#ifndef TSVPARSER_H
+#define TSVPARSER_H
 
 #include "Library.h"
 
@@ -12,7 +12,7 @@
 // 书名	作者	出版社	数量	图片名	条码号
 // 斯大林全集第八卷		人民出版社	2	1-21	1000002100
 // 斯大林全集第八卷		人民出版社	2	1-21	1000002101
-class CSVParser {
+class TSVParser {
 public:
   struct RawData {
     QString ImageName; // cover image file name. Filename is ImageName.jpg
@@ -34,4 +34,4 @@ private:
   friend class LibrarySystem;
 };
 
-#endif // CSVPARSER_H
+#endif // TSVPARSER_H

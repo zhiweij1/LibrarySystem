@@ -1,15 +1,16 @@
-#include "CSVParser.h"
+#include "TSVParser.h"
 
 #include <QSet>
 #include <QString>
 
-ErrorOr<void> CSVParser::parse(const QString &Path) {
+ErrorOr<void> TSVParser::parse(const QString &Path) {
   QFile File(Path);
-  if (!File.open(QIODevice::ReadOnly | QIODevice::Text)) {
+  if (!File.open(QIODevice::ReadOnly)) {
     return {ErrorCode::InternalError, QString("无法打开文件: %1").arg(Path)};
   }
 
-  QTextStream In(&File);
+  QString Content = QString::fromLocal8Bit(File.readAll());
+  QTextStream In(&Content, QIODeviceBase::ReadOnly);
 
   int LineNumber = 0;
   Results.clear();
@@ -81,8 +82,9 @@ ErrorOr<void> CSVParser::parse(const QString &Path) {
                                  ExpectedCount, {Barcode}),
                          {Barcode}});
     } else {
-      Aggregated[AggKey].Barcodes.append(Barcode);
-      Aggregated[AggKey].Record.Barcodes.append(Barcode);
+      auto It = Aggregated.find(AggKey);
+      It.value().Barcodes.append(Barcode);
+      It.value().Record.Barcodes.append(Barcode);
     }
   }
 
@@ -132,8 +134,7 @@ ErrorOr<void> CSVParser::parse(const QString &Path) {
     for (const QString &Code : Temp.Barcodes) {
       if (ExistingInDB.contains(Code.trimmed())) {
         ErrorMessages.append(QString("书籍 [%1]：条码 [%2] 已在系统库中存在")
-                                 .arg(Temp.Record.Title)
-                                 .arg(Code.trimmed()));
+                                 .arg(Temp.Record.Title, Code.trimmed()));
         HasDatabaseConflict = true;
       }
     }

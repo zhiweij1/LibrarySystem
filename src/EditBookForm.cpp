@@ -28,7 +28,7 @@ EditBookForm::~EditBookForm() { delete UI; }
 
 void EditBookForm::handleSelectCSVFileButtonClicked() {
   QString File =
-      QFileDialog::getOpenFileName(this, "打开书目清单", "", "CSV文件 (*.csv)");
+      QFileDialog::getOpenFileName(this, "打开书目清单", "", "TSV文件 (*.txt)");
   if (!File.isEmpty()) {
     UI->CSVFilePathLabel->setText(File);
   }

@@ -1,6 +1,6 @@
 #include "Library.h"
 
-#include "CSVParser.h"
+#include "TSVParser.h"
 
 #include <QCoreApplication>
 #include <QDebug>
@@ -32,8 +32,8 @@ ErrorOr<bool> LibrarySystem::isBarcodeExists(const QString &Barcode) {
 }
 
 ErrorOr<void> LibrarySystem::importFromCSV(const QString &FilePath) {
-  CSVParser Parser;
-  // 1. 调用新接口解析 CSV，获取详细报错
+  TSVParser Parser;
+  // 1. 调用解析接口解析 TSV，获取详细报错
   auto ParseRes = Parser.parse(FilePath);
   if (!ParseRes) {
     return ParseRes;

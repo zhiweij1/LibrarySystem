@@ -13,8 +13,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(Qt6 REQUIRED COMPONENTS Widgets Sql Test)
 
 set(CORE_SOURCES
-    src/CSVParser.h
-    src/CSVParser.cpp
+    src/TSVParser.h
+    src/TSVParser.cpp
     src/Library.h
     src/Library.cpp
 )
