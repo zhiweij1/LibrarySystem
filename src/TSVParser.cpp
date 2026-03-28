@@ -166,7 +166,8 @@ ErrorOr<void> TSVParser::parse(const QString &Path) {
       if (ExistingInDB.contains(Code.trimmed())) {
         ErrorMessages.append(QString("第 %1 行书籍 [%2]：条码 [%3] 已在系统库中存在")
                                  .arg(Temp.Line)
-                                 .arg(Temp.Record.Title, Code.trimmed()));
+                                 .arg(Temp.Record.Title)
+                                 .arg(Code.trimmed()));
         HasDatabaseConflict = true;
       }
     }
