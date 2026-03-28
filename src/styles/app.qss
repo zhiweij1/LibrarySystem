@@ -81,14 +81,13 @@ QSpinBox {
 QSpinBox:focus {
     border-color: #90CAF9;
 }
-
-/* 表格 - 不使用固定字体大小，继承应用字体 */
 QTableWidget, QTableView {
     background-color: #FFFFFF;
     border: 1px solid #E0E0E0;
     border-radius: 6px;
     gridline-color: #EEEEEE;
     color: #333333;
+    font-size: 16px;
     alternate-background-color: #FAFAFA;
 }
 QTableWidget::item, QTableView::item {
@@ -105,6 +104,7 @@ QHeaderView::section {
     border-right: 1px solid #EEEEEE;
     padding: 6px;
     font-weight: bold;
+    font-size: 16px;
     color: #333333;
 }
 
@@ -220,4 +220,10 @@ QStatusBar {
     background-color: #FAFAFA;
     border-top: 1px solid #E0E0E0;
     color: #666666;
+}
+
+/* 消息对话框 */
+QMessageBox QLabel {
+    font-size: 16px;
+    color: #333333;
 }
