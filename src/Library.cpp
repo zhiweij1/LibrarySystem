@@ -1,6 +1,6 @@
 #include "Library.h"
 
-#include "CSVParser.h"
+#include "TSVParser.h"
 
 #include <QCoreApplication>
 #include <QDebug>
@@ -31,9 +31,9 @@ ErrorOr<bool> LibrarySystem::isBarcodeExists(const QString &Barcode) {
   return Query.next();
 }
 
-ErrorOr<void> LibrarySystem::importFromCSV(const QString &FilePath) {
-  CSVParser Parser;
-  // 1. 调用新接口解析 CSV，获取详细报错
+ErrorOr<void> LibrarySystem::importFromTSV(const QString &FilePath) {
+  TSVParser Parser;
+  // 1. 调用解析接口解析 TSV，获取详细报错
   auto ParseRes = Parser.parse(FilePath);
   if (!ParseRes) {
     return ParseRes;
@@ -55,9 +55,9 @@ ErrorOr<void> LibrarySystem::importFromCSV(const QString &FilePath) {
     emit importProgress(Current, Total);
     // 拼接封面路径
     QString SourcePath =
-        QFileInfo(FilePath).absolutePath() + "/photos/" + Data.CSVID + ".jpg";
-    QString TargetPath = CoverTargetDir + Data.CSVID + ".jpg";
-    QString RelativePath = "covers/" + Data.CSVID + ".jpg";
+        QFileInfo(FilePath).absolutePath() + "/photos/" + Data.ImageName + ".jpg";
+    QString TargetPath = CoverTargetDir + Data.ImageName + ".jpg";
+    QString RelativePath = "covers/" + Data.ImageName + ".jpg";
 
     // 如果目标文件已存在，copy 会失败，建议先删除或检查
     if (QFile::exists(SourcePath)) {
@@ -67,14 +67,12 @@ ErrorOr<void> LibrarySystem::importFromCSV(const QString &FilePath) {
     }
 
     // 3. 插入书籍信息 (BookInfo)
-    Query.prepare("INSERT INTO bookinfo (title, author, publisher, cover_path, "
-                  "category_id) "
-                  "VALUES (:t, :a, :p, :c, :cat)");
+    Query.prepare("INSERT INTO bookinfo (title, author, publisher, cover_path) "
+                  "VALUES (:t, :a, :p, :c)");
     Query.bindValue(":t", Data.Title);
     Query.bindValue(":a", Data.Author);
     Query.bindValue(":p", Data.Publisher);
     Query.bindValue(":c", RelativePath);
-    Query.bindValue(":cat", Data.Category);
 
     if (!Query.exec()) {
       DB.rollback();

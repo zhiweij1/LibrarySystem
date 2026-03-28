@@ -23,7 +23,7 @@
       </size>
      </property>
      <property name="text">
-      <string>从CSV导入</string>
+      <string>从TSV导入</string>
      </property>
     </widget>
    </item>
@@ -66,7 +66,7 @@
         </size>
        </property>
        <property name="text">
-        <string>选择CSV文件</string>
+        <string>选择TSV文件</string>
        </property>
       </widget>
      </item>
@@ -173,7 +173,7 @@
    <item>
     <layout class="QFormLayout" name="bookInfoLayout">
      <property name="labelAlignment">
-      <set>Qt::AlignmentFlag::AlignRight|Qt::AlignmentFlag::AlignVCenter</set>
+      <set>Qt::AlignmentFlag::AlignRight|Qt::AlignmentFlag::AlignTrailing|Qt::AlignmentFlag::AlignVCenter</set>
      </property>
      <property name="horizontalSpacing">
       <number>20</number>

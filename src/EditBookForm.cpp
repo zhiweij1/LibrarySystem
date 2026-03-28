@@ -28,7 +28,7 @@ EditBookForm::~EditBookForm() { delete UI; }
 
 void EditBookForm::handleSelectCSVFileButtonClicked() {
   QString File =
-      QFileDialog::getOpenFileName(this, "打开书目清单", "", "CSV文件 (*.csv)");
+      QFileDialog::getOpenFileName(this, "打开书目清单", "", "TSV文件 (*.tsv *.txt)");
   if (!File.isEmpty()) {
     UI->CSVFilePathLabel->setText(File);
   }
@@ -54,7 +54,7 @@ void EditBookForm::handleLoadFromCSVButtonClicked() {
           });
 
   auto ResultErrOr =
-      LibrarySystem::getInstance().importFromCSV(UI->CSVFilePathLabel->text());
+      LibrarySystem::getInstance().importFromTSV(UI->CSVFilePathLabel->text());
 
   Progress.close();
 

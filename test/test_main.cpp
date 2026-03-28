@@ -1,4 +1,4 @@
-#include "../src/CSVParser.h"
+#include "../src/TSVParser.h"
 #include "../src/Library.h"
 
 #include <QSignalSpy>
@@ -34,23 +34,23 @@ private slots:
     QVERIFY2(!Res, "不存在的卡号不应返回有效读者");
   }
 
-  void testCSVParserLogic() {
-    CSVParser Parser;
-    auto Res = Parser.parse("non_existent_file.csv");
+  void testTSVParserLogic() {
+    TSVParser Parser;
+    auto Res = Parser.parse("non_existent_file.tsv");
     QVERIFY2(!Res, "解析不存在的文件应该返回错误状态");
   }
 
-  void testCSVCountMismatch() {
+  void testTSVCountMismatch() {
     QTemporaryFile File;
     if (File.open()) {
       QTextStream Out(&File);
-      Out << "ID,Title,Author,Pub,Count,Cat,Barcodes\n";
-      // 册数写 2，但条码只给 1 个，预期触发 ValidationError
-      Out << "1,Test,Author,Press,2,B1,CODE_001\n";
+      Out << "书名\t作者\t出版社\t数量\t图片名\t条码号\n";
+      // 册数写 2，但只给 1 行条码，预期触发 ValidationError
+      Out << "Test\tAuthor\tPress\t2\timg\tCODE_00\n";
       File.close();
     }
 
-    CSVParser Parser;
+    TSVParser Parser;
     auto Res = Parser.parse(File.fileName());
     QVERIFY(!Res);
     QCOMPARE(Res.getErrCode(), ErrorCode::ValidationError);
