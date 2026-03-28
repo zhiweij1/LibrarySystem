@@ -34,12 +34,12 @@ MainWindow::MainWindow(QWidget *Parent)
   QueryBookPage = new QueryBookForm(this);
   RemindReturnPage = new RemindReturnForm(this);
 
-  UI->stackedWidget->addWidget(BorrowPage);      // Index 0
-  UI->stackedWidget->addWidget(ReturnPage);      // Index 1
-  UI->stackedWidget->addWidget(QueryBookPage);   // Index 2
-  UI->stackedWidget->addWidget(RemindReturnPage);// Index 3
-  UI->stackedWidget->addWidget(EditBookPage);    // Index 4
-  UI->stackedWidget->addWidget(EditReaderPage);  // Index 5
+  UI->stackedWidget->addWidget(BorrowPage);      // 索引 0
+  UI->stackedWidget->addWidget(ReturnPage);      // 索引 1
+  UI->stackedWidget->addWidget(QueryBookPage);   // 索引 2
+  UI->stackedWidget->addWidget(RemindReturnPage);// 索引 3
+  UI->stackedWidget->addWidget(EditBookPage);    // 索引 4
+  UI->stackedWidget->addWidget(EditReaderPage);  // 索引 5
 
   UI->stackedWidget->setCurrentWidget(BorrowPage);
   changeTheme(Theme::purple, UI->BorrowBookButton);

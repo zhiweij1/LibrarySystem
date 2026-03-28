@@ -70,12 +70,12 @@ void BorrowBookForm::handleBookAddButtonClicked() {
   int Row = UI->BookListTableWidget->rowCount();
   UI->BookListTableWidget->insertRow(Row);
 
-  // add book cover
+  // 添加书籍封面
   CoverPreviewLabel *ImgLabel =
       new CoverPreviewLabel(BookData.first.CoverPath, 60, 80);
   UI->BookListTableWidget->setCellWidget(Row, 0, ImgLabel);
 
-  // add book info
+  // 添加书籍信息
   QTableWidgetItem *BarcodeItem = new QTableWidgetItem(Barcode);
   BarcodeItem->setData(Qt::UserRole, BookData.second.ID);
   UI->BookListTableWidget->setItem(Row, 1, BarcodeItem);
@@ -86,7 +86,7 @@ void BorrowBookForm::handleBookAddButtonClicked() {
   UI->BookListTableWidget->setItem(
       Row, 4, new QTableWidgetItem(BookData.first.Publisher));
 
-  // add delete button
+  // 添加删除按钮
   QPushButton *DelBtn = new QPushButton("删除");
   DelBtn->setStyleSheet(
       "QPushButton{color:#D32F2F;background-color:#FFEBEE;border:1px solid #FFCDD2;"
@@ -96,7 +96,7 @@ void BorrowBookForm::handleBookAddButtonClicked() {
       "QPushButton:disabled{color:#BDBDBD;background-color:#FFEBEE;border:1px solid #FFCDD2;}");
   UI->BookListTableWidget->setCellWidget(Row, 5, DelBtn);
 
-  // bind the delete operation
+  // 绑定删除操作
   connect(DelBtn, &QPushButton::clicked, [this, DelBtn]() {
     int Row = UI->BookListTableWidget->indexAt(DelBtn->pos()).row();
     UI->BookListTableWidget->removeRow(Row);
@@ -156,12 +156,12 @@ void BorrowBookForm::handleSubmitButtonClicked() {
   int RowCount = UI->BookListTableWidget->rowCount();
   ConfirmTable.setRowCount(RowCount);
 
-  // clone data
+  // 复制数据
   for (int Row = 0; Row < RowCount; ++Row) {
     if (auto *OldImg = dynamic_cast<CoverPreviewLabel *>(
             UI->BookListTableWidget->cellWidget(Row, 0))) {
       CoverPreviewLabel *NewImg =
-          new CoverPreviewLabel(OldImg->coverPath(), 60, 80);
+          new CoverPreviewLabel(OldImg->getCoverPath(), 60, 80);
       ConfirmTable.setCellWidget(Row, 0, NewImg);
     }
 
