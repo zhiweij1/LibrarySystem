@@ -31,7 +31,7 @@ ErrorOr<bool> LibrarySystem::isBarcodeExists(const QString &Barcode) {
   return Query.next();
 }
 
-ErrorOr<void> LibrarySystem::importFromCSV(const QString &FilePath) {
+ErrorOr<void> LibrarySystem::importFromTSV(const QString &FilePath) {
   TSVParser Parser;
   // 1. 调用解析接口解析 TSV，获取详细报错
   auto ParseRes = Parser.parse(FilePath);

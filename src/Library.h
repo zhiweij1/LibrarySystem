@@ -109,7 +109,7 @@ public:
 
   ErrorOr<void> init(const QString &DBPath = "library.db");
   ErrorOr<bool> isBarcodeExists(const QString &Barcode);
-  ErrorOr<void> importFromCSV(const QString &FilePath);
+  ErrorOr<void> importFromTSV(const QString &FilePath);
   ErrorOr<void> borrowBooks(int ReaderID, const QVector<int> &CopyIDs);
   ErrorOr<void> returnBooks(const QList<int> &RecordIDs);
   ErrorOr<void> renewBooks(const QList<int> &RecordIDs);

@@ -1,5 +1,7 @@
 #include "TSVParser.h"
 
+#include <QList>
+#include <QMap>
 #include <QSet>
 #include <QString>
 
@@ -32,7 +34,7 @@ ErrorOr<void> TSVParser::parse(const QString &Path) {
     LineNumber++;
   }
 
-  // 每行一个副本，相同书名的多行聚合为一条 RawData
+  // 每行一个副本，相同条码前缀（去掉最后两位副本编号）的多行聚合为一条 RawData
   QMap<QString, TempRecord> Aggregated;
 
   while (!In.atEnd()) {
@@ -72,6 +74,10 @@ ErrorOr<void> TSVParser::parse(const QString &Path) {
     AllBarcodesToQuery.insert(Barcode);
 
     // 以条码的前缀（去掉最后两位副本编号）作为聚合 key
+    if (Barcode.size() < 2) {
+      return {ErrorCode::ValidationError,
+              QString("第 %1 行错误：条码号长度不足").arg(LineNumber)};
+    }
     QString AggKey = Barcode.left(Barcode.size() - 2) + "xx";
 
     if (!Aggregated.contains(AggKey)) {
