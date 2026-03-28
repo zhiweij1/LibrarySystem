@@ -65,11 +65,8 @@ void dailyBackup() {
 
   auto Res = Lib.backupDatabaseTo(BackupPath);
   if (!Res) {
-    qCritical() << "每日备份失败:" << Res.getErrMsg();
-    QMessageBox::critical(nullptr, "",
-                          "错误：数据库备份失败 - " + Res.getErrMsg() +
-                              "，程序将退出。");
-    exit(-3);
+    qWarning() << "每日备份失败:" << Res.getErrMsg();
+    return;
   }
 
   qInfo() << "每日备份成功:" << BackupPath;

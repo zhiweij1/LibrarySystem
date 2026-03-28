@@ -138,7 +138,9 @@ public:
   QString getDatabasePath() const { return DBPath; }
   QString getDataDir() const { return DataDir; }
 
-  // 备份数据库到指定路径（内部管理 close/open 生命周期）
+  // 备份数据库到指定路径（内部会短暂关闭再重新打开连接）。
+  // 注意：必须在程序启动阶段、任何 QSqlQueryModel/SqlTableModel 创建之前调用，
+  // 否则已有查询和模型会因连接断开而失效。如需运行时备份，应改用 SQLite 在线备份 API。
   ErrorOr<void> backupDatabaseTo(const QString &BackupPath);
 
 private:
