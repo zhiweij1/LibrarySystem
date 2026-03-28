@@ -31,59 +31,76 @@ ErrorOr<void> CSVParser::parse(const QString &Path) {
     LineNumber++;
   }
 
+  // 每行一个副本，相同书名的多行聚合为一条 RawData
+  QMap<QString, TempRecord> Aggregated;
+
   while (!In.atEnd()) {
     QString Line = In.readLine();
     LineNumber++;
     if (Line.trimmed().isEmpty())
       continue;
 
-    QStringList Fields = Line.split(",");
-    if (Fields.size() < 7) {
+    QStringList Fields = Line.split("\t");
+    if (Fields.size() < 6) {
       return {ErrorCode::ValidationError,
               QString("第 %1 行错误：字段不足").arg(LineNumber)};
     }
 
-    // 2. 校验册数
+    // 字段：书名 作者 出版社 数量 图片名 条码号
     bool OK;
-    int ExpectedCount = Fields[4].toInt(&OK);
+    int ExpectedCount = Fields[3].toInt(&OK);
     if (!OK || ExpectedCount < 0) {
       return {ErrorCode::ValidationError,
               QString("第 %1 行错误：册数格式无效").arg(LineNumber)};
     }
 
-    // 3. 校验条码
-    QStringList Barcodes = Fields[6].trimmed().split(':', Qt::SkipEmptyParts);
-    if (Barcodes.size() != ExpectedCount) {
+    QString Barcode = Fields[5].trimmed();
+    if (Barcode.isEmpty()) {
       return {ErrorCode::ValidationError,
-              QString("第 %1 行错误：条码数(%2)与册数(%3)不符")
-                  .arg(LineNumber)
-                  .arg(Barcodes.size())
-                  .arg(ExpectedCount)};
+              QString("第 %1 行错误：条码号为空").arg(LineNumber)};
     }
 
-    // 文件内自查
-    bool HasFileError = false;
-    for (const QString &Code : std::as_const(Barcodes)) {
-      QString TrimmedCode = Code.trimmed();
-      if (SeenInFile.contains(TrimmedCode)) {
-        ErrorMessages.append(QString("第 %1 行：条码 [%2] 在文件中重复")
-                                 .arg(LineNumber)
-                                 .arg(TrimmedCode));
-        HasFileError = true;
-      } else {
-        SeenInFile.insert(TrimmedCode);
-        AllBarcodesToQuery.insert(TrimmedCode);
-      }
+    // 文件内自查：条码重复
+    if (SeenInFile.contains(Barcode)) {
+      ErrorMessages.append(QString("第 %1 行：条码 [%2] 在文件中重复")
+                               .arg(LineNumber)
+                               .arg(Barcode));
+      continue;
     }
+    SeenInFile.insert(Barcode);
+    AllBarcodesToQuery.insert(Barcode);
 
-    // 如果文件内已经发现重复，这条记录就不进待定区了
-    if (!HasFileError) {
-      PendingRecords.append(
-          {LineNumber,
-           RawData(Fields[0].trimmed(), Fields[1].trimmed(),
-                   Fields[2].trimmed(), Fields[3].trimmed(), ExpectedCount,
-                   Fields[5].trimmed(), Barcodes),
-           Barcodes});
+    // 以条码的前缀（去掉最后两位副本编号）作为聚合 key
+    QString AggKey = Barcode.left(Barcode.size() - 2) + "xx";
+
+    if (!Aggregated.contains(AggKey)) {
+      Aggregated.insert(AggKey,
+                        {LineNumber,
+                         RawData(Fields[4].trimmed(), Fields[0].trimmed(),
+                                 Fields[1].trimmed(), Fields[2].trimmed(),
+                                 ExpectedCount, {Barcode}),
+                         {Barcode}});
+    } else {
+      Aggregated[AggKey].Barcodes.append(Barcode);
+      Aggregated[AggKey].Record.Barcodes.append(Barcode);
+    }
+  }
+
+  // 校验聚合后的条码数量是否与册数一致
+  for (auto It = Aggregated.begin(); It != Aggregated.end(); ++It) {
+    if (It.value().Barcodes.size() != It.value().Record.Count) {
+      ErrorMessages.append(
+          QString("书籍 [%1] 条码数(%2)与册数(%3)不符")
+              .arg(It.value().Record.Title)
+              .arg(It.value().Barcodes.size())
+              .arg(It.value().Record.Count));
+    }
+  }
+
+  // 将无文件内错误的记录加入待定区
+  for (const auto &Temp : Aggregated) {
+    if (Temp.Barcodes.size() == Temp.Record.Count) {
+      PendingRecords.append(Temp);
     }
   }
 
@@ -114,14 +131,13 @@ ErrorOr<void> CSVParser::parse(const QString &Path) {
     bool HasDatabaseConflict = false;
     for (const QString &Code : Temp.Barcodes) {
       if (ExistingInDB.contains(Code.trimmed())) {
-        ErrorMessages.append(QString("第 %1 行：条码 [%2] 已在系统库中存在")
-                                 .arg(Temp.Line)
+        ErrorMessages.append(QString("书籍 [%1]：条码 [%2] 已在系统库中存在")
+                                 .arg(Temp.Record.Title)
                                  .arg(Code.trimmed()));
         HasDatabaseConflict = true;
       }
     }
 
-    // 只有既没有文件冲突，也没有数据库冲突的记录，才存入 Results
     if (!HasDatabaseConflict) {
       Results.append(Temp.Record);
     }

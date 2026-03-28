@@ -8,24 +8,23 @@
 #include <QTextStream>
 #include <QVector>
 
-// csv file format example:
-// 编号,书名,作者,出版社,数量,分类号,条形码
-// 1-193,丁光训文集,丁光训,译林出版社,4,B978,0000000:0000001:0000002:0000003
-// 1-194,丁光训文集精装,丁光训,译林出版社,1,B978,0000004
+// tab-separated file format example:
+// 书名	作者	出版社	数量	图片名	条码号
+// 斯大林全集第八卷		人民出版社	2	1-21	1000002100
+// 斯大林全集第八卷		人民出版社	2	1-21	1000002101
 class CSVParser {
 public:
   struct RawData {
-    QString CSVID; // ID for cover image file name. Filename is CSVID.jpg
+    QString ImageName; // cover image file name. Filename is ImageName.jpg
     QString Title;
     QString Author;
     QString Publisher;
     int Count;
-    QString Category;
     QStringList Barcodes;
-    RawData(QString CSVID, QString Title, QString Author, QString Publisher,
-            int Count, QString Category, QStringList Barcodes)
-        : CSVID(CSVID), Title(Title), Author(Author), Publisher(Publisher),
-          Count(Count), Category(Category), Barcodes(Barcodes) {}
+    RawData(QString ImageName, QString Title, QString Author, QString Publisher,
+            int Count, QStringList Barcodes)
+        : ImageName(ImageName), Title(Title), Author(Author),
+          Publisher(Publisher), Count(Count), Barcodes(Barcodes) {}
   };
 
   ErrorOr<void> parse(const QString &Path);
