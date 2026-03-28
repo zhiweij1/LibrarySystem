@@ -87,7 +87,7 @@ QTableWidget, QTableView {
     border-radius: 6px;
     gridline-color: #EEEEEE;
     color: #333333;
-    font-size: 16px;
+    font-size: 12pt;
     alternate-background-color: #FAFAFA;
 }
 QTableWidget::item, QTableView::item {
@@ -104,7 +104,7 @@ QHeaderView::section {
     border-right: 1px solid #EEEEEE;
     padding: 6px;
     font-weight: bold;
-    font-size: 16px;
+    font-size: 12pt;
     color: #333333;
 }
 
@@ -224,6 +224,6 @@ QStatusBar {
 
 /* 消息对话框 */
 QMessageBox QLabel {
-    font-size: 16px;
+    font-size: 12pt;
     color: #333333;
 }
