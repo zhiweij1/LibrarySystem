@@ -140,3 +140,4 @@ void MainWindow::handleEditReaderButtonClicked() {
   UI->stackedWidget->setCurrentWidget(EditReaderPage);
   changeTheme(Theme::red, UI->EditReaderButton);
 }
+

@@ -4,6 +4,7 @@
 #include <QDateTime>
 #include <QObject>
 #include <QSqlDatabase>
+#include <QSqlQuery>
 #include <QString>
 
 enum class ErrorCode {
@@ -94,6 +95,9 @@ enum ReaderStatus {
 class LibrarySystem : public QObject {
   Q_OBJECT
 
+signals:
+  void importProgress(int Current, int Total);
+
 public:
   static LibrarySystem &getInstance() {
     static LibrarySystem Instance;
@@ -130,6 +134,15 @@ public:
   };
   ErrorOr<QVector<ReaderBorrowInfo>> getRemindBorrowings(int Days);
 
+  // 数据库路径
+  QString getDatabasePath() const { return DBPath; }
+  QString getDataDir() const { return DataDir; }
+
+  // 备份数据库到指定路径（内部会短暂关闭再重新打开连接）。
+  // 注意：必须在程序启动阶段、任何 QSqlQueryModel/SqlTableModel 创建之前调用，
+  // 否则已有查询和模型会因连接断开而失效。如需运行时备份，应改用 SQLite 在线备份 API。
+  ErrorOr<void> backupDatabaseTo(const QString &BackupPath);
+
 private:
   LibrarySystem() = default;
   ErrorOr<void> borrowBook(QSqlQuery &Query, const int ReaderID,
@@ -137,7 +150,16 @@ private:
   ErrorOr<void> returnBook(QSqlQuery &Query, const int RecordID);
   ErrorOr<void> renewBook(QSqlQuery &Query, const int RecordID);
 
+  void closeDatabase() { DB.close(); }
+  bool openDatabase() {
+    if (!DB.open()) return false;
+    QSqlQuery Pragma(DB);
+    return Pragma.exec("PRAGMA foreign_keys = ON;");
+  }
+
   QSqlDatabase DB;
+  QString DBPath;   // 数据库文件路径
+  QString DataDir;  // 数据目录路径
 };
 
 #endif // LIBRARY_H

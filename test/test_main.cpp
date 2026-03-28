@@ -361,6 +361,33 @@ private slots:
   }
   // ===== 遗失书籍操作拦截测试 =====
 
+  void testCannotBorrowFromInactiveReader() {
+    QSqlQuery Query;
+    Query.exec("DELETE FROM borrow_record");
+    Query.exec("DELETE FROM bookcopy");
+    Query.exec("DELETE FROM bookinfo");
+    Query.exec("DELETE FROM reader");
+
+    // 插入一个已注销的读者
+    Query.exec("INSERT INTO reader (id, name, card_number, is_inactive) VALUES "
+               "(700, '注销读者', 'CARD_700', 1)");
+    Query.exec("INSERT INTO bookinfo (id, title) VALUES (700, '测试书')");
+    Query.exec(QString("INSERT INTO bookcopy (id, info_id, barcode, status) "
+                        "VALUES (700, 700, 'BC_700', %1)")
+                   .arg(BookCopy::BS_InLibrary));
+
+    // 尝试借书
+    auto Res = LibrarySystem::getInstance().borrowBooks(700, {700});
+    QVERIFY2(!Res, "已注销读者不应该能借书");
+    QCOMPARE(Res.getErrCode(), ErrorCode::InvalidStatus);
+    QVERIFY(Res.getErrMsg().contains("注销"));
+
+    // 验证书籍状态未被改变
+    Query.exec("SELECT status FROM bookcopy WHERE id = 700");
+    Query.next();
+    QCOMPARE(Query.value(0).toInt(), static_cast<int>(BookCopy::BS_InLibrary));
+  }
+
   void testCannotBorrowLostBook() {
     QSqlQuery Query;
     // 准备：插入读者和一本"遗失"状态的书籍

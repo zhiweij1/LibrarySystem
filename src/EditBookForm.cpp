@@ -5,6 +5,7 @@
 
 #include <QFileDialog>
 #include <QMessageBox>
+#include <QProgressDialog>
 
 EditBookForm::EditBookForm(QWidget *Parent)
     : QWidget(Parent), UI(new Ui::EditBookForm) {
@@ -38,8 +39,25 @@ void EditBookForm::handleLoadFromCSVButtonClicked() {
     QMessageBox::warning(this, "warning", "请先选择文件");
     return;
   }
+
+  QProgressDialog Progress("正在导入书籍...", QString(), 0, 0, this);
+  Progress.setWindowModality(Qt::WindowModal);
+  Progress.setMinimumDuration(0);
+  Progress.setAutoClose(false);
+  Progress.setAutoReset(false);
+  Progress.setCancelButton(nullptr);  // 不显示取消按钮（未实现取消功能）
+
+  connect(&LibrarySystem::getInstance(), &LibrarySystem::importProgress,
+          &Progress, [&Progress](int Current, int Total) {
+            Progress.setMaximum(Total);
+            Progress.setValue(Current);
+          });
+
   auto ResultErrOr =
       LibrarySystem::getInstance().importFromCSV(UI->CSVFilePathLabel->text());
+
+  Progress.close();
+
   if (!ResultErrOr) {
     QMessageBox::critical(this, "critical",
                           "导入失败: " + ResultErrOr.getErrMsg());

@@ -5,8 +5,22 @@
 #include <QCoreApplication>
 #include <QDebug>
 #include <QDir>
+#include <QFile>
+#include <QFileInfo>
 #include <QSqlError>
 #include <QSqlQuery>
+
+ErrorOr<void> LibrarySystem::backupDatabaseTo(const QString &BackupPath) {
+  closeDatabase();
+  bool Success = QFile::copy(DBPath, BackupPath);
+  if (!openDatabase()) {
+    return {ErrorCode::DatabaseError, "备份后重新打开数据库失败"};
+  }
+  if (!Success) {
+    return {ErrorCode::InternalError, "复制数据库文件失败"};
+  }
+  return {};
+}
 
 ErrorOr<bool> LibrarySystem::isBarcodeExists(const QString &Barcode) {
   QSqlQuery Query(DB);
@@ -25,7 +39,7 @@ ErrorOr<void> LibrarySystem::importFromCSV(const QString &FilePath) {
     return ParseRes;
   }
 
-  QString CoverTargetDir = QCoreApplication::applicationDirPath() + "/covers/";
+  QString CoverTargetDir = DataDir + "/covers/";
   QDir().mkpath(CoverTargetDir);
 
   // 2. 开启事务
@@ -34,7 +48,11 @@ ErrorOr<void> LibrarySystem::importFromCSV(const QString &FilePath) {
   }
 
   QSqlQuery Query(DB);
+  int Total = Parser.Results.size();
+  int Current = 0;
   for (const auto &Data : std::as_const(Parser.Results)) {
+    ++Current;
+    emit importProgress(Current, Total);
     // 拼接封面路径
     QString SourcePath =
         QFileInfo(FilePath).absolutePath() + "/photos/" + Data.CSVID + ".jpg";
@@ -90,6 +108,9 @@ ErrorOr<void> LibrarySystem::importFromCSV(const QString &FilePath) {
 }
 
 ErrorOr<void> LibrarySystem::init(const QString &DBPath) {
+  this->DBPath = DBPath;
+  this->DataDir = QFileInfo(DBPath).absolutePath();  // 数据目录路径
+
   if (QSqlDatabase::contains("qt_sql_default_connection")) {
     DB = QSqlDatabase::database("qt_sql_default_connection");
   } else {
@@ -260,6 +281,24 @@ ErrorOr<void> LibrarySystem::borrowBooks(int ReaderID,
   }
 
   QSqlQuery Query(DB);
+
+  // 检查读者状态（只查询一次）
+  Query.prepare("SELECT is_inactive FROM reader WHERE id = :rid");
+  Query.bindValue(":rid", ReaderID);
+  if (!Query.exec()) {
+    DB.rollback();
+    return {ErrorCode::DatabaseError,
+            "查询读者状态失败: " + Query.lastError().text()};
+  }
+  if (!Query.next()) {
+    DB.rollback();
+    return {ErrorCode::NotFound, "读者不存在"};
+  }
+  if (Query.value(0).toInt() == RS_InActive) {
+    DB.rollback();
+    return {ErrorCode::InvalidStatus, "该读者已注销，无法借书"};
+  }
+
   for (int CID : CopyIDs) {
     auto Res = borrowBook(Query, ReaderID, CID);
     if (!Res) {
