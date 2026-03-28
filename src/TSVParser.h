@@ -15,7 +15,7 @@
 class TSVParser {
 public:
   struct RawData {
-    QString ImageName; // 封面图片文件名，完整路径为 ImageName.jpg
+    QString ImageName; // 图片名（不含扩展名），对应文件为 <ImageName>.jpg（位于 photos/ 目录），导入后保存到 covers/
     QString Title;
     QString Author;
     QString Publisher;
