@@ -55,15 +55,23 @@ ErrorOr<void> LibrarySystem::importFromTSV(const QString &FilePath) {
     emit importProgress(Current, Total);
     // 拼接封面路径
     QString SourcePath =
-        QFileInfo(FilePath).absolutePath() + "/photos/" + Data.ImageName + ".jpg";
-    QString TargetPath = CoverTargetDir + Data.ImageName + ".jpg";
+        QDir(QFileInfo(FilePath).absolutePath()).filePath("photos/" + Data.ImageName + ".jpg");
+    QString TargetPath = QDir(CoverTargetDir).filePath(Data.ImageName + ".jpg");
     QString RelativePath = "covers/" + Data.ImageName + ".jpg";
 
     // 如果目标文件已存在，copy 会失败，建议先删除或检查
     if (QFile::exists(SourcePath)) {
       if (QFile::exists(TargetPath))
         QFile::remove(TargetPath);
-      QFile::copy(SourcePath, TargetPath);
+      if (!QFile::copy(SourcePath, TargetPath)) {
+        DB.rollback();
+        return {ErrorCode::InternalError,
+                "导入失败: 封面图片复制失败 " + SourcePath + " -> " + TargetPath};
+      }
+    } else {
+      DB.rollback();
+      return {ErrorCode::InternalError,
+              "导入失败: 封面图片源文件不存在 " + SourcePath};
     }
 
     // 3. 插入书籍信息 (BookInfo)
