@@ -119,10 +119,17 @@ ErrorOr<void> LibrarySystem::init(const QString &DBPath) {
 
   if (QSqlDatabase::contains("qt_sql_default_connection")) {
     DB = QSqlDatabase::database("qt_sql_default_connection");
+    // 如果数据库已打开且路径一致，直接复用
+    if (DB.isOpen() && DB.databaseName() == DBPath) {
+      return {};
+    }
+    // 路径不一致时，关闭旧连接
+    if (DB.isOpen()) {
+      DB.close();
+    }
   } else {
     DB = QSqlDatabase::addDatabase("QSQLITE");
   }
-
   DB.setDatabaseName(DBPath);
 
   if (!DB.open())
@@ -176,6 +183,11 @@ ErrorOr<void> LibrarySystem::init(const QString &DBPath) {
                    "FOREIGN KEY(copy_id) REFERENCES bookcopy(id)"
                    ")");
 
+  // 为借阅记录添加唯一约束：同一本书不能有两条未归还的记录
+  // SQLite 不支持 WHERE 子句的 UNIQUE 索引语法，但可以通过唯一部分索引实现
+  Query.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_active_borrow "
+             "ON borrow_record(copy_id) WHERE return_date IS NULL");
+
   if (!OK)
     return {ErrorCode::DatabaseError, "建表失败: " + Query.lastError().text()};
 
@@ -224,7 +236,7 @@ LibrarySystem::getBookDataByBarcode(const QString &Barcode) {
 ErrorOr<Reader>
 LibrarySystem::getReaderByCardNumber(const QString &CardNumber) {
   QSqlQuery Query(DB);
-  Query.prepare("SELECT id, name, card_number, phone FROM reader WHERE "
+  Query.prepare("SELECT id, name, card_number, phone, is_inactive FROM reader WHERE "
                 "card_number = :card");
   Query.bindValue(":card", CardNumber);
 
@@ -234,6 +246,7 @@ LibrarySystem::getReaderByCardNumber(const QString &CardNumber) {
     Rdr.Name = Query.value("name").toString();
     Rdr.CardNumber = Query.value("card_number").toString();
     Rdr.PhoneNumber = Query.value("phone").toString();
+    Rdr.IsInactive = Query.value("is_inactive").toBool();
     return Rdr;
   }
   return {ErrorCode::NotFound, "读者不存在: " + CardNumber};
@@ -377,9 +390,9 @@ ErrorOr<void> LibrarySystem::returnBook(QSqlQuery &Query, const int RecordID) {
   int CopyId = -1;
   int Status = -1;
 
-  // 获取副本ID及其状态
+  // 获取副本ID及其状态，同时检查是否已归还
   Query.prepare(
-      "SELECT br.copy_id, bc.status FROM borrow_record br "
+      "SELECT br.copy_id, bc.status, br.return_date FROM borrow_record br "
       "JOIN bookcopy bc ON br.copy_id = bc.id "
       "WHERE br.id = :rid");
   Query.bindValue(":rid", RecordID);
@@ -389,6 +402,12 @@ ErrorOr<void> LibrarySystem::returnBook(QSqlQuery &Query, const int RecordID) {
   if (!Query.next())
     return {ErrorCode::NotFound,
             "未找到借阅记录，记录ID: " + QString::number(RecordID)};
+
+  // 检查该记录是否已归还
+  if (!Query.value(2).isNull())
+    return {ErrorCode::InvalidStatus,
+            "该借阅记录已归还，无法重复操作"};
+
   CopyId = Query.value(0).toInt();
   Status = Query.value(1).toInt();
 
@@ -440,9 +459,9 @@ ErrorOr<void> LibrarySystem::returnBooks(const QList<int> &RecordIDs) {
 }
 
 ErrorOr<void> LibrarySystem::renewBook(QSqlQuery &Query, const int RecordID) {
-  // 先查询借阅记录对应的书籍副本状态
+  // 先查询借阅记录对应的书籍副本状态，同时检查是否已归还
   Query.prepare(
-      "SELECT bc.status FROM borrow_record br "
+      "SELECT bc.status, br.return_date FROM borrow_record br "
       "JOIN bookcopy bc ON br.copy_id = bc.id "
       "WHERE br.id = :rid");
   Query.bindValue(":rid", RecordID);
@@ -452,6 +471,11 @@ ErrorOr<void> LibrarySystem::renewBook(QSqlQuery &Query, const int RecordID) {
   if (!Query.next())
     return {ErrorCode::NotFound,
             "未找到借阅记录，记录ID: " + QString::number(RecordID)};
+
+  // 检查该记录是否已归还
+  if (!Query.value(1).isNull())
+    return {ErrorCode::InvalidStatus,
+            "该借阅记录已归还，无法续借"};
 
   int Status = Query.value(0).toInt();
   if (Status == BookCopy::BookStatus::BS_Lost)
@@ -492,6 +516,44 @@ ErrorOr<void> LibrarySystem::renewBooks(const QList<int> &RecordIDs) {
   DB.rollback();
   return {ErrorCode::DatabaseError,
           "提交续借事务失败: " + DB.lastError().text()};
+}
+
+ErrorOr<void> LibrarySystem::returnAndRenewBooks(
+    const QList<int> &ReturnRecordIDs, const QList<int> &RenewRecordIDs) {
+  if (ReturnRecordIDs.isEmpty() && RenewRecordIDs.isEmpty())
+    return {};
+
+  if (!DB.transaction()) {
+    return {ErrorCode::DatabaseError, "事务启动失败: " + DB.lastError().text()};
+  }
+
+  QSqlQuery Query(DB);
+
+  // 先执行归还
+  for (int RID : ReturnRecordIDs) {
+    auto Res = returnBook(Query, RID);
+    if (!Res) {
+      DB.rollback();
+      return Res;
+    }
+  }
+
+  // 再执行续借
+  for (int RID : RenewRecordIDs) {
+    auto Res = renewBook(Query, RID);
+    if (!Res) {
+      DB.rollback();
+      return Res;
+    }
+  }
+
+  if (DB.commit()) {
+    return {};
+  }
+
+  DB.rollback();
+  return {ErrorCode::DatabaseError,
+          "提交归还/续借事务失败: " + DB.lastError().text()};
 }
 
 ErrorOr<QVector<std::pair<BorrowDetailType, Reader>>>

@@ -62,6 +62,8 @@ void ReturnBookForm::handleReaderNumberPushButtonClicked() {
   QVector<BorrowDetailType> Details = DetailsErrOr.getValue();
 
   UI->BorrowingTableWidget->setRowCount(0);
+  // 清理旧的 QButtonGroup（避免内存泄漏）
+  qDeleteAll(RowGroups);
   RowGroups.clear();
 
   for (const auto &Detail : std::as_const(Details)) {
@@ -213,21 +215,13 @@ void ReturnBookForm::handleSubmitButtonClicked() {
 
     QStringList TotalErrors;
 
-    // 2. 执行批量归还
-    if (!ReturnIds.isEmpty()) {
-      auto Err = LibrarySystem::getInstance().returnBooks(ReturnIds);
-      if (!Err)
-        TotalErrors.append(Err.getErrMsg());
+    // 2. 在同一事务中执行批量归还和续借，保证原子性
+    auto Err = LibrarySystem::getInstance().returnAndRenewBooks(ReturnIds, RenewIds);
+    if (!Err) {
+      TotalErrors.append(Err.getErrMsg());
     }
 
-    // 3. 执行批量续借
-    if (!RenewIds.isEmpty()) {
-      auto Err = LibrarySystem::getInstance().renewBooks(RenewIds);
-      if (!Err)
-        TotalErrors.append(Err.getErrMsg());
-    }
-
-    // 4. 反馈结果
+    // 3. 反馈结果
     if (TotalErrors.isEmpty()) {
       int TotalCount = ReturnIds.size() + RenewIds.size();
       QMessageBox::information(
@@ -240,7 +234,7 @@ void ReturnBookForm::handleSubmitButtonClicked() {
       qCritical() << "[还书/续借]部分或全部操作失败: " + TotalErrors.join("\n");
     }
 
-    // 5. 刷新界面
+    // 4. 刷新界面
     handleReaderNumberPushButtonClicked();
   }
 }

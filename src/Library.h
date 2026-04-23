@@ -24,12 +24,18 @@ public:
   bool isOK() const { return ErrCode == ErrorCode::Success; }
   ErrorCode getErrCode() const { return ErrCode; }
   QString getErrMsg() const { return ErrMsg; }
-  const T &getValue() const { return Value; }
-  T &getValue() { return Value; }
+  const T &getValue() const {
+    Q_ASSERT(isOK());
+    return Value;
+  }
+  T &getValue() {
+    Q_ASSERT(isOK());
+    return Value;
+  }
   operator bool() const { return isOK(); }
 
 private:
-  T Value;
+  T Value{};
   ErrorCode ErrCode;
   QString ErrMsg;
 };
@@ -70,6 +76,7 @@ struct Reader {
   QString Name;
   QString CardNumber;
   QString PhoneNumber;
+  bool IsInactive = false;
 };
 
 struct BorrowRecord {
@@ -113,6 +120,9 @@ public:
   ErrorOr<void> borrowBooks(int ReaderID, const QVector<int> &CopyIDs);
   ErrorOr<void> returnBooks(const QList<int> &RecordIDs);
   ErrorOr<void> renewBooks(const QList<int> &RecordIDs);
+  // 归还和续借在同一事务中执行，保证原子性
+  ErrorOr<void> returnAndRenewBooks(const QList<int> &ReturnRecordIDs,
+                                    const QList<int> &RenewRecordIDs);
   ErrorOr<std::pair<BookInfo, BookCopy>>
   getBookDataByBarcode(const QString &Barcode);
   ErrorOr<Reader> getReaderByCardNumber(const QString &CardNumber);
