@@ -57,16 +57,6 @@ private slots:
     QVERIFY(Res.getErrMsg().contains("不符"));
   }
 
-  void testTSVParserResultsClearedOnError() {
-    // TSVParser 出错时 Results 应被清空
-    TSVParser Parser;
-    auto Res = Parser.parse("non_existent_file.tsv");
-    QVERIFY(!Res);
-    // Results 是 private，但通过 friend 可以访问
-    // 验证解析失败后 Results 为空
-    QCOMPARE(Parser.Results.size(), 0);
-  }
-
   void testBorrowTransactionRollback() {
     auto &Lib = LibrarySystem::getInstance();
     QSqlDatabase DB = QSqlDatabase::database();

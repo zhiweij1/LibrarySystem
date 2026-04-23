@@ -679,7 +679,7 @@ ErrorOr<QString> LibrarySystem::getNewReaderCardID() {
             "数据库查询失败: " + Query.lastError().text()};
   }
 
-  int NewID = 1000000;
+  int NewID = 2000000;
   if (Query.next()) {
     QVariant Value = Query.value(0);
     if (!Value.isNull()) {
