@@ -99,6 +99,7 @@ int main(int argc, char *argv[]) {
   // 日志文件（堆分配，确保生命周期覆盖整个程序）
   QFile *OutFile = new QFile(DataDir + "/log.txt");
   if (!OutFile->open(QIODevice::WriteOnly | QIODevice::Append)) {
+    delete OutFile;
     QMessageBox::critical(nullptr, "", "错误：日志文件无法打开，程序将退出。");
     exit(-1);
   }

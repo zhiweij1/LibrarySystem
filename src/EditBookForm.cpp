@@ -47,15 +47,19 @@ void EditBookForm::handleLoadFromCSVButtonClicked() {
   Progress.setAutoReset(false);
   Progress.setCancelButton(nullptr);  // 不显示取消按钮（未实现取消功能）
 
-  connect(&LibrarySystem::getInstance(), &LibrarySystem::importProgress,
-          &Progress, [&Progress](int Current, int Total) {
-            Progress.setMaximum(Total);
-            Progress.setValue(Current);
-          });
+  // 使用 QScopedPointer 确保连接在作用域结束时自动断开
+  QMetaObject::Connection Conn;
+  Conn = connect(&LibrarySystem::getInstance(), &LibrarySystem::importProgress,
+                 &Progress, [&Progress](int Current, int Total) {
+                   Progress.setMaximum(Total);
+                   Progress.setValue(Current);
+                 });
 
   auto ResultErrOr =
       LibrarySystem::getInstance().importFromTSV(UI->CSVFilePathLabel->text());
 
+  // 断开信号连接，防止重复连接
+  disconnect(Conn);
   Progress.close();
 
   if (!ResultErrOr) {

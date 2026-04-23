@@ -96,10 +96,14 @@ void BorrowBookForm::handleBookAddButtonClicked() {
       "QPushButton:disabled{color:#BDBDBD;background-color:#FFEBEE;border:1px solid #FFCDD2;}");
   UI->BookListTableWidget->setCellWidget(Row, 5, DelBtn);
 
-  // 绑定删除操作
+  // 绑定删除操作：通过遍历 cellWidget 找到按钮所在行
   connect(DelBtn, &QPushButton::clicked, [this, DelBtn]() {
-    int Row = UI->BookListTableWidget->indexAt(DelBtn->pos()).row();
-    UI->BookListTableWidget->removeRow(Row);
+    for (int Row = 0; Row < UI->BookListTableWidget->rowCount(); ++Row) {
+      if (UI->BookListTableWidget->cellWidget(Row, 5) == DelBtn) {
+        UI->BookListTableWidget->removeRow(Row);
+        break;
+      }
+    }
   });
 
   UI->BookNumLineEdit->clear();
@@ -125,11 +129,22 @@ void BorrowBookForm::handleReaderNumberButtonClicked() {
   UI->ReaderInfoLabel->setText(
       QString("姓名：%1\n卡号：%2\n电话：%3")
           .arg(RdrOpt->Name, RdrOpt->CardNumber, RdrOpt->PhoneNumber));
+
+  if (RdrOpt->IsInactive) {
+    UI->ReaderInfoLabel->setStyleSheet("background:transparent;color:red;");
+    QMessageBox::warning(this, "warning", "该读者已注销，无法借书");
+  } else {
+    UI->ReaderInfoLabel->setStyleSheet("background:transparent;color:black;");
+  }
 }
 
 void BorrowBookForm::handleSubmitButtonClicked() {
   if (!RdrOpt) {
     QMessageBox::warning(this, "warning", "请先选择读者");
+    return;
+  }
+  if (RdrOpt->IsInactive) {
+    QMessageBox::warning(this, "warning", "该读者已注销，无法借书");
     return;
   }
   if (UI->BookListTableWidget->rowCount() == 0) {
@@ -200,6 +215,7 @@ void BorrowBookForm::handleSubmitButtonClicked() {
       UI->BookListTableWidget->setRowCount(0);
       UI->ReaderNumLineEdit->clear();
       UI->ReaderInfoLabel->setText("未选择读者");
+      UI->ReaderInfoLabel->setStyleSheet("background:transparent;color:black;");
       RdrOpt = std::nullopt;
     }
   }

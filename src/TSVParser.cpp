@@ -178,6 +178,7 @@ ErrorOr<void> TSVParser::parse(const QString &Path) {
   }
 
   if (!ErrorMessages.isEmpty()) {
+    Results.clear(); // 出错时清空结果，避免残留脏数据
     return {ErrorCode::ValidationError, ErrorMessages.join("\n")};
   }
 

@@ -90,9 +90,12 @@ EditReaderForm::~EditReaderForm() { delete UI; }
 
 void EditReaderForm::performSearch() {
   const QString Text = UI->ReaderSearchLineEdit->text();
+  // 转义单引号防止 SQL 注入
+  QString Escaped = Text;
+  Escaped.replace("'", "''");
   QString Filter = QString("(name LIKE '%%1%') OR (card_number LIKE '%%1%') OR "
                            "(phone LIKE '%%1%')")
-                       .arg(Text);
+                       .arg(Escaped);
   Model->setFilter(Filter);
   Model->select();
 }

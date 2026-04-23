@@ -10,7 +10,7 @@
 #include <QPixmap>
 #include <QVBoxLayout>
 
-inline QPixmap loadPixmapWithExif(const QString &Path) {
+static inline QPixmap loadPixmapWithExif(const QString &Path) {
   QImageReader Reader(Path);
   Reader.setAutoTransform(true);  // 自动处理 EXIF 方向
   QImage Img = Reader.read();
