@@ -81,6 +81,7 @@ CMakeLists.txt.user*
 .uic/
 /build*/
 .cache
+.claude
 
 # compilation database
 compile_commands.json
