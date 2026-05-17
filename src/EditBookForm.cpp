@@ -10,7 +10,8 @@
 EditBookForm::EditBookForm(QWidget *Parent)
     : QWidget(Parent), UI(new Ui::EditBookForm) {
   UI->setupUi(this);
-  UI->MarkLostButton->setEnabled(false);
+  UI->ModifyStatusButton->setEnabled(false);
+  UI->TargetStatusComboBox->setEnabled(false);
 
   connect(UI->SelectCSVFileButton, &QPushButton::clicked, this,
           &EditBookForm::handleSelectCSVFileButtonClicked);
@@ -20,8 +21,8 @@ EditBookForm::EditBookForm(QWidget *Parent)
           &EditBookForm::handleQueryButtonClicked);
   connect(UI->BarcodeLineEdit, &QLineEdit::returnPressed, this,
           &EditBookForm::handleQueryButtonClicked);
-  connect(UI->MarkLostButton, &QPushButton::clicked, this,
-          &EditBookForm::handleMarkLostButtonClicked);
+  connect(UI->ModifyStatusButton, &QPushButton::clicked, this,
+          &EditBookForm::handleModifyStatusButtonClicked);
 }
 
 EditBookForm::~EditBookForm() { delete UI; }
@@ -90,26 +91,48 @@ void EditBookForm::handleQueryButtonClicked() {
   const auto &[Info, Copy] = Result.getValue();
   updateBookInfoDisplay(Info, Copy);
 
-  // 只有"在馆"或"借出"状态才允许标记遗失
-  UI->MarkLostButton->setEnabled(
-      Copy.Status == BookCopy::BS_InLibrary ||
-      Copy.Status == BookCopy::BS_Borrowed);
+  // 根据当前状态填充可选的目标状态
+  UI->TargetStatusComboBox->clear();
+  bool CanModify = false;
+  switch (Copy.Status) {
+  case BookCopy::BS_InLibrary:
+    UI->TargetStatusComboBox->addItem("遗失", BookCopy::BS_Lost);
+    UI->TargetStatusComboBox->addItem("非外借书", BookCopy::BS_NonLendable);
+    CanModify = true;
+    break;
+  case BookCopy::BS_Borrowed:
+    UI->TargetStatusComboBox->addItem("遗失", BookCopy::BS_Lost);
+    UI->TargetStatusComboBox->addItem("非外借书", BookCopy::BS_NonLendable);
+    CanModify = true;
+    break;
+  case BookCopy::BS_Lost:
+  case BookCopy::BS_NonLendable:
+    UI->TargetStatusComboBox->addItem("在馆", BookCopy::BS_InLibrary);
+    CanModify = true;
+    break;
+  }
+  UI->TargetStatusComboBox->setEnabled(CanModify);
+  UI->ModifyStatusButton->setEnabled(CanModify);
 }
 
-void EditBookForm::handleMarkLostButtonClicked() {
+void EditBookForm::handleModifyStatusButtonClicked() {
   if (CurrentBarcode.isEmpty()) {
     QMessageBox::warning(this, "提示", "请先查询图书");
     return;
   }
 
+  int TargetStatus = UI->TargetStatusComboBox->currentData().toInt();
+  QString TargetStatusText = UI->TargetStatusComboBox->currentText();
+
   auto Result = LibrarySystem::getInstance().modifyBookStatusByBarcode(
-      CurrentBarcode, BookCopy::BS_Lost);
+      CurrentBarcode, TargetStatus);
   if (!Result) {
-    QMessageBox::warning(this, "标记失败", Result.getErrMsg());
+    QMessageBox::warning(this, "修改失败", Result.getErrMsg());
     return;
   }
 
-  QMessageBox::information(this, "成功", "图书已标记为遗失");
+  QMessageBox::information(this, "成功",
+                           QString("图书状态已修改为'%1'").arg(TargetStatusText));
 
   // 重新查询以刷新显示
   handleQueryButtonClicked();
@@ -132,6 +155,9 @@ void EditBookForm::updateBookInfoDisplay(const BookInfo &Info,
   case BookCopy::BS_Lost:
     StatusText = "遗失";
     break;
+  case BookCopy::BS_NonLendable:
+    StatusText = "非外借书";
+    break;
   default:
     StatusText = "未知";
     break;
@@ -145,5 +171,7 @@ void EditBookForm::clearBookInfoDisplay() {
   UI->BookAuthorLabel->setText("-");
   UI->BookPublisherLabel->setText("-");
   UI->BookStatusLabel->setText("-");
-  UI->MarkLostButton->setEnabled(false);
+  UI->TargetStatusComboBox->clear();
+  UI->TargetStatusComboBox->setEnabled(false);
+  UI->ModifyStatusButton->setEnabled(false);
 }

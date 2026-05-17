@@ -17,7 +17,7 @@ ReturnBookForm::ReturnBookForm(QWidget *Parent)
   connect(UI->SubmitButton, &QPushButton::clicked, this,
           &ReturnBookForm::handleSubmitButtonClicked);
 
-  connect(UI->ReaderNumerLineEdit, &QLineEdit::returnPressed, this,
+  connect(UI->ReaderNumberLineEdit, &QLineEdit::returnPressed, this,
           &ReturnBookForm::handleReaderNumberPushButtonClicked);
 
   UI->BorrowingTableWidget->setColumnCount(7);
@@ -36,7 +36,7 @@ ReturnBookForm::ReturnBookForm(QWidget *Parent)
 ReturnBookForm::~ReturnBookForm() { delete UI; }
 
 void ReturnBookForm::handleReaderNumberPushButtonClicked() {
-  QString CardNumber = UI->ReaderNumerLineEdit->text().trimmed();
+  QString CardNumber = UI->ReaderNumberLineEdit->text().trimmed();
   auto ReaderErrOr =
       LibrarySystem::getInstance().getReaderByCardNumber(CardNumber);
 
@@ -100,17 +100,7 @@ void ReturnBookForm::handleReaderNumberPushButtonClicked() {
     QButtonGroup *Group = new QButtonGroup(this);
     Group->addButton(CBReturn);
     Group->addButton(CBRenew);
-    Group->setExclusive(false);
-    connect(CBReturn, &QCheckBox::clicked, [CBReturn, CBRenew](bool Checked) {
-      if (Checked) {
-        CBRenew->setChecked(false);
-      }
-    });
-    connect(CBRenew, &QCheckBox::clicked, [CBReturn, CBRenew](bool Checked) {
-      if (Checked) {
-        CBReturn->setChecked(false);
-      }
-    });
+    Group->setExclusive(true);
 
     UI->BorrowingTableWidget->setCellWidget(Row, 5, CBReturn);
     UI->BorrowingTableWidget->setCellWidget(Row, 6, CBRenew);

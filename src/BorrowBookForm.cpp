@@ -55,7 +55,13 @@ void BorrowBookForm::handleBookAddButtonClicked() {
   if (BookData.second.Status == BookCopy::BookStatus::BS_Lost) {
     QMessageBox::warning(
         this, "warning",
-        QString("条码 [%1] 对应的书籍目前处于‘遗失’状态").arg(Barcode));
+        QString("条码 [%1] 对应的书籍目前处于’遗失’状态").arg(Barcode));
+    return;
+  }
+  if (BookData.second.Status == BookCopy::BookStatus::BS_NonLendable) {
+    QMessageBox::warning(
+        this, "warning",
+        QString("条码 [%1] 对应的书籍目前处于’非外借书’状态").arg(Barcode));
     return;
   }
   for (int Idx = 0; Idx < UI->BookListTableWidget->rowCount(); ++Idx) {
@@ -100,7 +106,9 @@ void BorrowBookForm::handleBookAddButtonClicked() {
   connect(DelBtn, &QPushButton::clicked, [this, DelBtn]() {
     for (int Row = 0; Row < UI->BookListTableWidget->rowCount(); ++Row) {
       if (UI->BookListTableWidget->cellWidget(Row, 5) == DelBtn) {
+        delete UI->BookListTableWidget->cellWidget(Row, 0);
         UI->BookListTableWidget->removeRow(Row);
+        DelBtn->deleteLater();
         break;
       }
     }

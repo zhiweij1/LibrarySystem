@@ -26,6 +26,13 @@ public:
                              int ThumbHeight, QWidget *Parent = nullptr)
       : QLabel(Parent), CoverPath(CoverPath) {
     QString FullPath = LibrarySystem::getInstance().getDataDir() + "/" + CoverPath;
+    if (CoverPath.isEmpty() || LibrarySystem::getInstance().getDataDir().isEmpty()) {
+      setText("无封面");
+      setStyleSheet(
+          "background-color: #E0E0E0; color: #999; font-size: 11px;");
+      setAlignment(Qt::AlignCenter);
+      return;
+    }
     QPixmap Pix = loadPixmapWithExif(FullPath);
     if (Pix.isNull()) {
       setText("无封面");

@@ -123,7 +123,7 @@
       </size>
      </property>
      <property name="text">
-      <string>标记图书遗失</string>
+      <string>修改图书状态</string>
      </property>
     </widget>
    </item>
@@ -285,6 +285,29 @@
        </property>
       </widget>
      </item>
+     <item row="4" column="0">
+      <widget class="QLabel" name="TargetStatusLabel">
+       <property name="minimumSize">
+        <size>
+         <width>0</width>
+         <height>30</height>
+        </size>
+       </property>
+       <property name="text">
+        <string>目标状态：</string>
+       </property>
+      </widget>
+     </item>
+     <item row="4" column="1">
+      <widget class="QComboBox" name="TargetStatusComboBox">
+       <property name="minimumSize">
+        <size>
+         <width>0</width>
+         <height>30</height>
+        </size>
+       </property>
+      </widget>
+     </item>
     </layout>
    </item>
    <item>
@@ -303,7 +326,7 @@
       </spacer>
      </item>
      <item>
-      <widget class="QPushButton" name="MarkLostButton">
+      <widget class="QPushButton" name="ModifyStatusButton">
        <property name="minimumSize">
         <size>
          <width>120</width>
@@ -311,7 +334,7 @@
         </size>
        </property>
        <property name="text">
-        <string>标记为遗失</string>
+        <string>确认修改</string>
        </property>
       </widget>
      </item>

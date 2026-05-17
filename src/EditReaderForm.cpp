@@ -90,11 +90,14 @@ EditReaderForm::~EditReaderForm() { delete UI; }
 
 void EditReaderForm::performSearch() {
   const QString Text = UI->ReaderSearchLineEdit->text();
-  // 转义单引号防止 SQL 注入
+  // 转义 SQL 特殊字符（顺序重要：先转义反斜杠本身）
   QString Escaped = Text;
   Escaped.replace("'", "''");
-  QString Filter = QString("(name LIKE '%%1%') OR (card_number LIKE '%%1%') OR "
-                           "(phone LIKE '%%1%')")
+  Escaped.replace("\\", "\\\\");
+  Escaped.replace("%", "\\%");
+  Escaped.replace("_", "\\_");
+  QString Filter = QString("(name LIKE '%%1%' ESCAPE '\\') OR (card_number LIKE '%%1%' ESCAPE '\\') OR "
+                           "(phone LIKE '%%1%' ESCAPE '\\')")
                        .arg(Escaped);
   Model->setFilter(Filter);
   Model->select();
@@ -156,6 +159,11 @@ void EditReaderForm::handleDeactivateButtonClicked() {
 
   if (Model->submitAll()) {
     refreshStatusDisplay();
+  } else {
+    QMessageBox::critical(this, "critical",
+                          "操作失败: " + Model->lastError().text());
+    qCritical() << "操作失败: " + Model->lastError().text();
+    Model->revertAll();
   }
   for (int Idx = 0; Idx < Model->rowCount(); ++Idx) {
     if (Model->index(Idx, 2).data() == CardID) {

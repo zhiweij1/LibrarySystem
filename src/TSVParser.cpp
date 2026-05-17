@@ -84,12 +84,15 @@ ErrorOr<void> TSVParser::parse(const QString &Path) {
     SeenInFile.insert(Barcode);
     AllBarcodesToQuery.insert(Barcode);
 
-    // 以条码的前缀（去掉最后两位副本编号）作为聚合 key
+    // 条形码除最后两位（副本编号）以外必须相同，且书名、作者、出版社、封面完全一致才视为同一本书的副本
     if (Barcode.size() < 2) {
       return {ErrorCode::ValidationError,
               QString("第 %1 行错误：条码号长度不足").arg(LineNumber)};
     }
-    QString AggKey = Barcode.left(Barcode.size() - 2) + "xx";
+    QString BarcodePrefix = Barcode.left(Barcode.size() - 2);
+    QString AggKey = BarcodePrefix + "|" + Fields[0].trimmed() + "|" +
+                     Fields[1].trimmed() + "|" + Fields[2].trimmed() + "|" +
+                     ImageName;
 
     if (!Aggregated.contains(AggKey)) {
       Aggregated.insert(AggKey,
@@ -100,15 +103,12 @@ ErrorOr<void> TSVParser::parse(const QString &Path) {
                          {Barcode}});
     } else {
       auto It = Aggregated.find(AggKey);
-      // 校验同一条码前缀下的书目字段是否与首行一致
       auto &Existing = It.value().Record;
-      if (Existing.Title != Fields[0].trimmed() ||
-          Existing.Author != Fields[1].trimmed() ||
-          Existing.Publisher != Fields[2].trimmed() ||
-          Existing.Count != ExpectedCount ||
-          Existing.ImageName != ImageName) {
+
+      // 防御性校验：相同聚合键下的条目应有一致的书目信息和册数
+      if (Existing.Count != ExpectedCount) {
         ErrorMessages.append(
-            QString("第 %1 行错误：与第 %2 行条码前缀相同，但书目信息或册数不一致")
+            QString("第 %1 行错误：与第 %2 行条码前缀及书目信息相同，但册数不一致")
                 .arg(LineNumber)
                 .arg(It.value().Line));
         continue;

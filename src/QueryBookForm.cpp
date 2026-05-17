@@ -19,6 +19,7 @@ QueryBookForm::QueryBookForm(QWidget *Parent)
   UI->StatusFilterComboBox->addItem("在馆", BookCopy::BS_InLibrary);
   UI->StatusFilterComboBox->addItem("借出", BookCopy::BS_Borrowed);
   UI->StatusFilterComboBox->addItem("遗失", BookCopy::BS_Lost);
+  UI->StatusFilterComboBox->addItem("非外借书", BookCopy::BS_NonLendable);
 
   connect(UI->SearchButton, &QPushButton::clicked, this,
           &QueryBookForm::handleSearchButtonClicked);
@@ -132,7 +133,11 @@ void QueryBookForm::initTable() {
 }
 
 void QueryBookForm::updateTable() {
-  // 只清空数据，保留表头和列宽设置
+  // 删除旧 cell widget 防止内存泄漏
+  for (int Row = 0; Row < UI->ResultTableWidget->rowCount(); ++Row) {
+    delete UI->ResultTableWidget->cellWidget(Row, 0);
+    delete UI->ResultTableWidget->cellWidget(Row, 5);
+  }
   UI->ResultTableWidget->clearContents();
   UI->ResultTableWidget->setRowCount(0);
 
@@ -180,9 +185,17 @@ void QueryBookForm::updateTable() {
                            .arg(StatusBtn->property("readerPhone").toString());
         QMessageBox::information(this, "读者信息", Info);
       });
-    } else {
+    } else if (Item.first.Copy.Status == BookCopy::BookStatus::BS_Lost) {
       StatusBtn->setText("遗失");
       StatusBtn->setStyleSheet("color: white; background-color: #F44336; border-radius: 4px;");
+      StatusBtn->setEnabled(false);
+    } else if (Item.first.Copy.Status == BookCopy::BookStatus::BS_NonLendable) {
+      StatusBtn->setText("非外借书");
+      StatusBtn->setStyleSheet("color: white; background-color: #2196F3; border-radius: 4px;");
+      StatusBtn->setEnabled(false);
+    } else {
+      StatusBtn->setText("未知");
+      StatusBtn->setStyleSheet("color: white; background-color: #9E9E9E; border-radius: 4px;");
       StatusBtn->setEnabled(false);
     }
 
