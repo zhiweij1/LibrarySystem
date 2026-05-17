@@ -19,7 +19,7 @@ private slots:
   void handleSelectCSVFileButtonClicked();
   void handleLoadFromCSVButtonClicked();
   void handleQueryButtonClicked();
-  void handleMarkLostButtonClicked();
+  void handleModifyStatusButtonClicked();
 
 private:
   void updateBookInfoDisplay(const BookInfo &Info, const BookCopy &Copy);

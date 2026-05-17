@@ -12,11 +12,11 @@
 
 ErrorOr<void> LibrarySystem::backupDatabaseTo(const QString &BackupPath) {
   closeDatabase();
-  bool Success = QFile::copy(DBPath, BackupPath);
+  bool CopyOK = QFile::copy(DBPath, BackupPath);
   if (!openDatabase()) {
     return {ErrorCode::DatabaseError, "备份后重新打开数据库失败"};
   }
-  if (!Success) {
+  if (!CopyOK) {
     return {ErrorCode::InternalError, "复制数据库文件失败"};
   }
   return {};
@@ -269,6 +269,8 @@ ErrorOr<void> LibrarySystem::borrowBook(QSqlQuery &Query, const int ReaderID,
     return {ErrorCode::InvalidStatus, "该书籍目前处于'借出'状态，无法再次借出"};
   if (Status == BookCopy::BookStatus::BS_Lost)
     return {ErrorCode::InvalidStatus, "该书籍目前处于'遗失'状态，无法借出"};
+  if (Status == BookCopy::BookStatus::BS_NonLendable)
+    return {ErrorCode::InvalidStatus, "该书籍目前处于'非外借书'状态，无法借出"};
 
   Query.prepare(
       "INSERT INTO borrow_record (reader_id, copy_id, borrow_date, due_date) "
@@ -413,6 +415,8 @@ ErrorOr<void> LibrarySystem::returnBook(QSqlQuery &Query, const int RecordID) {
 
   if (Status == BookCopy::BookStatus::BS_Lost)
     return {ErrorCode::InvalidStatus, "该书籍处于'遗失'状态，请先办理挂失处理后再归还"};
+  if (Status == BookCopy::BookStatus::BS_NonLendable)
+    return {ErrorCode::InvalidStatus, "该书籍处于'非外借书'状态，无法归还"};
 
   // 更新归还日期
   Query.prepare(
@@ -480,6 +484,8 @@ ErrorOr<void> LibrarySystem::renewBook(QSqlQuery &Query, const int RecordID) {
   int Status = Query.value(0).toInt();
   if (Status == BookCopy::BookStatus::BS_Lost)
     return {ErrorCode::InvalidStatus, "该书籍处于'遗失'状态，无法续借"};
+  if (Status == BookCopy::BookStatus::BS_NonLendable)
+    return {ErrorCode::InvalidStatus, "该书籍处于'非外借书'状态，无法续借"};
 
   Query.prepare(
       "UPDATE borrow_record SET due_date = date(due_date, '+30 days') "
@@ -788,13 +794,27 @@ ErrorOr<void> LibrarySystem::modifyBookStatusByBarcode(const QString &Barcode, i
   if (CurrentStatus == NewStatus)
     return {ErrorCode::InvalidStatus, "书籍已处于该状态"};
 
-  // 验证状态转换：只允许从"在馆"或"借出"改为"遗失"
-  if (CurrentStatus == BookCopy::BS_Lost) {
-    return {ErrorCode::InvalidStatus, "遗失状态的图书无法修改状态"};
+  // 验证状态转换
+  bool NeedCloseBorrow = false;
+  bool ValidTransition = false;
+
+  if (NewStatus == BookCopy::BS_Lost || NewStatus == BookCopy::BS_NonLendable) {
+    // 从"在馆"或"借出"改为"遗失"或"非外借书"
+    if (CurrentStatus == BookCopy::BS_InLibrary ||
+        CurrentStatus == BookCopy::BS_Borrowed) {
+      ValidTransition = true;
+      NeedCloseBorrow = (CurrentStatus == BookCopy::BS_Borrowed);
+    }
+  } else if (NewStatus == BookCopy::BS_InLibrary) {
+    // 从"遗失"或"非外借书"恢复为"在馆"
+    if (CurrentStatus == BookCopy::BS_Lost ||
+        CurrentStatus == BookCopy::BS_NonLendable) {
+      ValidTransition = true;
+    }
   }
-  if (NewStatus != BookCopy::BS_Lost) {
-    return {ErrorCode::InvalidStatus, "只允许将图书状态修改为'遗失'"};
-  }
+
+  if (!ValidTransition)
+    return {ErrorCode::InvalidStatus, "不支持该状态转换"};
 
   if (!DB.transaction())
     return {ErrorCode::DatabaseError, "事务启动失败: " + DB.lastError().text()};
@@ -809,7 +829,7 @@ ErrorOr<void> LibrarySystem::modifyBookStatusByBarcode(const QString &Barcode, i
   }
 
   // 如果之前是"借出"状态，需要关闭借阅记录
-  if (CurrentStatus == BookCopy::BS_Borrowed) {
+  if (NeedCloseBorrow) {
     Query.prepare(
         "UPDATE borrow_record SET return_date = date('now') "
         "WHERE copy_id = :cid AND return_date IS NULL");

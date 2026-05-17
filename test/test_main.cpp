@@ -735,7 +735,7 @@ private slots:
         "BC_LOST_04", BookCopy::BS_Borrowed);
     QVERIFY(!Res);
     QCOMPARE(Res.getErrCode(), ErrorCode::InvalidStatus);
-    QVERIFY(Res.getErrMsg().contains("只允许"));
+    QVERIFY(Res.getErrMsg().contains("不支持"));
   }
 
   void testModifyLostBookStatus() {
@@ -748,15 +748,194 @@ private slots:
                         "VALUES (604, 604, 'BC_LOST_05', %1)")
                    .arg(BookCopy::BS_Lost));
 
+    // 现在允许从"遗失"恢复为"在馆"
     auto Res = Lib.modifyBookStatusByBarcode(
         "BC_LOST_05", BookCopy::BS_InLibrary);
-    QVERIFY(!Res);
-    QCOMPARE(Res.getErrCode(), ErrorCode::InvalidStatus);
-    QVERIFY(Res.getErrMsg().contains("遗失"));
+    QVERIFY2(Res, Res.getErrMsg().toUtf8().constData());
 
     Query.exec("SELECT status FROM bookcopy WHERE barcode = 'BC_LOST_05'");
     Query.next();
-    QCOMPARE(Query.value(0).toInt(), static_cast<int>(BookCopy::BS_Lost));
+    QCOMPARE(Query.value(0).toInt(), static_cast<int>(BookCopy::BS_InLibrary));
+  }
+
+  // ===== 非外借书状态测试 =====
+
+  void testMarkInLibraryBookAsNonLendable() {
+    auto &Lib = LibrarySystem::getInstance();
+    QSqlDatabase DB = QSqlDatabase::database();
+    QSqlQuery Query(DB);
+
+    Query.exec("DELETE FROM borrow_record");
+    Query.exec("DELETE FROM bookcopy");
+    Query.exec("DELETE FROM bookinfo");
+
+    Query.exec("INSERT INTO bookinfo (id, title) VALUES (610, '非外借候选书')");
+    Query.exec(QString("INSERT INTO bookcopy (id, info_id, barcode, status) "
+                       "VALUES (610, 610, 'BC_NL_01', %1)")
+                   .arg(BookCopy::BS_InLibrary));
+
+    auto Res = Lib.modifyBookStatusByBarcode(
+        "BC_NL_01", BookCopy::BS_NonLendable);
+    QVERIFY2(Res, Res.getErrMsg().toUtf8().constData());
+
+    Query.exec("SELECT status FROM bookcopy WHERE barcode = 'BC_NL_01'");
+    Query.next();
+    QCOMPARE(Query.value(0).toInt(), static_cast<int>(BookCopy::BS_NonLendable));
+  }
+
+  void testMarkBorrowedBookAsNonLendable() {
+    auto &Lib = LibrarySystem::getInstance();
+    QSqlDatabase DB = QSqlDatabase::database();
+    QSqlQuery Query(DB);
+
+    Query.exec("DELETE FROM borrow_record");
+    Query.exec("DELETE FROM bookcopy");
+    Query.exec("DELETE FROM bookinfo");
+    Query.exec("DELETE FROM reader");
+
+    Query.exec("INSERT INTO reader (id, name, card_number) VALUES "
+               "(610, '读者', 'CARD_610')");
+    Query.exec("INSERT INTO bookinfo (id, title) VALUES (611, '借出中非外借书')");
+    Query.exec(QString("INSERT INTO bookcopy (id, info_id, barcode, status) "
+                       "VALUES (611, 611, 'BC_NL_02', %1)")
+                   .arg(BookCopy::BS_Borrowed));
+    Query.exec("INSERT INTO borrow_record (reader_id, copy_id, borrow_date, "
+               "due_date) "
+               "VALUES (610, 611, date('now', '-5 days'), date('now', '+25 "
+               "days'))");
+
+    auto Res = Lib.modifyBookStatusByBarcode(
+        "BC_NL_02", BookCopy::BS_NonLendable);
+    QVERIFY2(Res, Res.getErrMsg().toUtf8().constData());
+
+    Query.exec("SELECT status FROM bookcopy WHERE barcode = 'BC_NL_02'");
+    Query.next();
+    QCOMPARE(Query.value(0).toInt(), static_cast<int>(BookCopy::BS_NonLendable));
+
+    // 验证借阅记录已关闭
+    Query.exec("SELECT return_date FROM borrow_record WHERE copy_id = 611");
+    Query.next();
+    QString Today = QDate::currentDate().toString("yyyy-MM-dd");
+    QCOMPARE(Query.value(0).toString(), Today);
+  }
+
+  void testRevertNonLendableBookToInLibrary() {
+    auto &Lib = LibrarySystem::getInstance();
+    QSqlDatabase DB = QSqlDatabase::database();
+    QSqlQuery Query(DB);
+
+    Query.exec("INSERT INTO bookinfo (id, title) VALUES (612, '非外借恢复书')");
+    Query.exec(QString("INSERT INTO bookcopy (id, info_id, barcode, status) "
+                       "VALUES (612, 612, 'BC_NL_03', %1)")
+                   .arg(BookCopy::BS_NonLendable));
+
+    auto Res = Lib.modifyBookStatusByBarcode(
+        "BC_NL_03", BookCopy::BS_InLibrary);
+    QVERIFY2(Res, Res.getErrMsg().toUtf8().constData());
+
+    Query.exec("SELECT status FROM bookcopy WHERE barcode = 'BC_NL_03'");
+    Query.next();
+    QCOMPARE(Query.value(0).toInt(), static_cast<int>(BookCopy::BS_InLibrary));
+  }
+
+  void testCannotBorrowNonLendableBook() {
+    auto &Lib = LibrarySystem::getInstance();
+    QSqlDatabase DB = QSqlDatabase::database();
+    QSqlQuery Query(DB);
+
+    Query.exec("DELETE FROM borrow_record");
+    Query.exec("DELETE FROM bookcopy");
+    Query.exec("DELETE FROM bookinfo");
+    Query.exec("DELETE FROM reader");
+
+    Query.exec("INSERT INTO reader (id, name, card_number) VALUES "
+               "(613, '借书员', 'CARD_613')");
+    Query.exec("INSERT INTO bookinfo (id, title) VALUES (613, '非外借的书')");
+    Query.exec(QString("INSERT INTO bookcopy (id, info_id, barcode, status) "
+                       "VALUES (613, 613, 'BC_NL_04', %1)")
+                   .arg(BookCopy::BS_NonLendable));
+
+    auto Res = Lib.borrowBooks(613, {613});
+    QVERIFY2(!Res, "非外借书不应该能借出");
+    QCOMPARE(Res.getErrCode(), ErrorCode::InvalidStatus);
+    QVERIFY(Res.getErrMsg().contains("非外借书"));
+
+    Query.exec("SELECT status FROM bookcopy WHERE id = 613");
+    Query.next();
+    QCOMPARE(Query.value(0).toInt(), static_cast<int>(BookCopy::BS_NonLendable));
+  }
+
+  void testCannotReturnNonLendableBook() {
+    auto &Lib = LibrarySystem::getInstance();
+    QSqlDatabase DB = QSqlDatabase::database();
+    QSqlQuery Query(DB);
+
+    Query.exec("DELETE FROM borrow_record");
+    Query.exec("DELETE FROM bookcopy");
+    Query.exec("DELETE FROM bookinfo");
+    Query.exec("DELETE FROM reader");
+
+    Query.exec("INSERT INTO reader (id, name, card_number) VALUES "
+               "(614, '还书员', 'CARD_614')");
+    Query.exec("INSERT INTO bookinfo (id, title) VALUES (614, '非外借书B')");
+    Query.exec(QString("INSERT INTO bookcopy (id, info_id, barcode, status) "
+                       "VALUES (614, 614, 'BC_NL_05', %1)")
+                   .arg(BookCopy::BS_NonLendable));
+    Query.exec("INSERT INTO borrow_record (id, reader_id, copy_id, "
+               "borrow_date, due_date) "
+               "VALUES (6014, 614, 614, date('now', '-10 days'), date('now', "
+               "'-5 days'))");
+
+    auto Res = Lib.returnBooks({6014});
+    QVERIFY2(!Res, "非外借书不应该能直接归还");
+    QCOMPARE(Res.getErrCode(), ErrorCode::InvalidStatus);
+    QVERIFY(Res.getErrMsg().contains("非外借书"));
+  }
+
+  void testCannotRenewNonLendableBook() {
+    auto &Lib = LibrarySystem::getInstance();
+    QSqlDatabase DB = QSqlDatabase::database();
+    QSqlQuery Query(DB);
+
+    Query.exec("DELETE FROM borrow_record");
+    Query.exec("DELETE FROM bookcopy");
+    Query.exec("DELETE FROM bookinfo");
+    Query.exec("DELETE FROM reader");
+
+    Query.exec("INSERT INTO reader (id, name, card_number) VALUES "
+               "(615, '续借员', 'CARD_615')");
+    Query.exec("INSERT INTO bookinfo (id, title) VALUES (615, '非外借书C')");
+    Query.exec(QString("INSERT INTO bookcopy (id, info_id, barcode, status) "
+                       "VALUES (615, 615, 'BC_NL_06', %1)")
+                   .arg(BookCopy::BS_NonLendable));
+
+    QString OriginalDueDate("2025-01-10");
+    Query.exec(QString("INSERT INTO borrow_record (id, reader_id, copy_id, "
+                       "due_date) VALUES (6015, 615, 615, '%1')")
+                   .arg(OriginalDueDate));
+
+    auto Res = Lib.renewBooks({6015});
+    QVERIFY2(!Res, "非外借书不应该能续借");
+    QCOMPARE(Res.getErrCode(), ErrorCode::InvalidStatus);
+    QVERIFY(Res.getErrMsg().contains("非外借书"));
+  }
+
+  void testModifyStatusInvalidTransition() {
+    auto &Lib = LibrarySystem::getInstance();
+    QSqlDatabase DB = QSqlDatabase::database();
+    QSqlQuery Query(DB);
+
+    Query.exec("INSERT INTO bookinfo (id, title) VALUES (616, '测试书')");
+    Query.exec(QString("INSERT INTO bookcopy (id, info_id, barcode, status) "
+                       "VALUES (616, 616, 'BC_NL_07', %1)")
+                   .arg(BookCopy::BS_NonLendable));
+
+    // 不能从非外借书直接改为遗失（应先恢复为在馆）
+    auto Res = Lib.modifyBookStatusByBarcode(
+        "BC_NL_07", BookCopy::BS_Lost);
+    QVERIFY(!Res);
+    QCOMPARE(Res.getErrCode(), ErrorCode::InvalidStatus);
+    QVERIFY(Res.getErrMsg().contains("不支持"));
   }
 };
 

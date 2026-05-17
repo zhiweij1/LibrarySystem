@@ -32,7 +32,7 @@ public:
     Q_ASSERT(isOK());
     return Value;
   }
-  operator bool() const { return isOK(); }
+  explicit operator bool() const { return isOK(); }
 
 private:
   T Value{};
@@ -48,7 +48,7 @@ public:
   bool isOK() const { return ErrCode == ErrorCode::Success; }
   ErrorCode getErrCode() const { return ErrCode; }
   QString getErrMsg() const { return ErrMsg; }
-  operator bool() const { return isOK(); }
+  explicit operator bool() const { return isOK(); }
 
 private:
   ErrorCode ErrCode;
@@ -64,7 +64,7 @@ struct BookInfo {
 };
 
 struct BookCopy {
-  enum BookStatus { BS_InLibrary = 0, BS_Borrowed, BS_Lost };
+  enum BookStatus { BS_InLibrary = 0, BS_Borrowed, BS_Lost, BS_NonLendable };
   int ID = -1;
   int InfoID = -1;
   QString Barcode;
