@@ -2,10 +2,10 @@
 #include "MainWindow.h"
 
 #include <QApplication>
-#include <QDate>
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
+#include <QFileDialog>
 #include <QFileInfo>
 #include <QFontDatabase>
 #include <QMessageBox>
@@ -43,60 +43,18 @@ void messageHandler(QtMsgType Type, const QMessageLogContext &Context,
 }
 } // namespace
 
-void dailyBackup() {
-  auto &Lib = LibrarySystem::getInstance();
-  QString DataDir = Lib.getDataDir();
-
-  QSettings Settings(DataDir + "/settings.ini", QSettings::IniFormat);
-
-  QString Today = QDate::currentDate().toString(Qt::ISODate);
-  QString LastBackupDate = Settings.value("backup/lastDate").toString();
-
-  if (LastBackupDate == Today) {
-    return;  // 今天已经备份过
-  }
-
-  QString BackupDir = DataDir + "/backups";
-  QDir().mkpath(BackupDir);
-
-  QString BackupPath = BackupDir + "/backup_" +
-                       QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss") +
-                       ".db";
-
-  auto Res = Lib.backupDatabaseTo(BackupPath);
-  if (!Res) {
-    qWarning() << "每日备份失败:" << Res.getErrMsg();
-    return;
-  }
-
-  qInfo() << "每日备份成功:" << BackupPath;
-  Settings.setValue("backup/lastDate", Today);
-
-  // 复制到坚果云同步目录（如果已配置）
-  QString CloudDir = Settings.value("backup/cloud_dir").toString();
-  if (!CloudDir.isEmpty() && QDir(CloudDir).exists()) {
-    QString CloudPath = CloudDir + "/" + QFileInfo(BackupPath).fileName();
-    if (QFile::copy(BackupPath, CloudPath)) {
-      qInfo() << "已复制到云同步目录:" << CloudPath;
-    } else {
-      qWarning() << "复制到云同步目录失败";
-    }
-  }
-}
-
 int main(int argc, char *argv[]) {
   QApplication App(argc, argv);
 
   App.setApplicationVersion(GIT_REVISION);
   qDebug() << "App Version:" << qApp->applicationVersion();
 
-  // 数据目录：用户文档目录下的 LibrarySystemData 文件夹
   QString DataDir =
       QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) +
       "/LibrarySystemData";
   QDir().mkpath(DataDir);
 
-  // 日志文件（堆分配，确保生命周期覆盖整个程序）
+  // 日志文件
   QFile *OutFile = new QFile(DataDir + "/log.txt");
   if (!OutFile->open(QIODevice::WriteOnly | QIODevice::Append)) {
     delete OutFile;
@@ -106,14 +64,28 @@ int main(int argc, char *argv[]) {
   OutFilePtr = OutFile;
   qInstallMessageHandler(messageHandler);
 
-  // 数据库文件
-  QString DBPath = DataDir + "/library.db";
-  if (!LibrarySystem::getInstance().init(DBPath)) {
-    QMessageBox::critical(nullptr, "", "错误：数据库无法启动，程序将退出。");
+  // 数据文件：从 QSettings 读取上次路径，找不到则让用户选择
+  QSettings Settings(DataDir + "/settings.ini", QSettings::IniFormat);
+  QString XlsxPath = Settings.value("data/xlsxPath").toString();
+
+  if (XlsxPath.isEmpty() || !QFile::exists(XlsxPath)) {
+    XlsxPath = QFileDialog::getOpenFileName(
+        nullptr, "选择数据文件",
+        XlsxPath.isEmpty() ? QDir::homePath() : QFileInfo(XlsxPath).absolutePath(),
+        "Excel 文件 (*.xlsx)");
+    if (XlsxPath.isEmpty()) {
+      delete OutFile;
+      exit(0); // 用户取消
+    }
+    Settings.setValue("data/xlsxPath", XlsxPath);
+  }
+
+  if (!LibrarySystem::getInstance().init(XlsxPath)) {
+    QMessageBox::critical(nullptr, "", "错误：无法打开数据文件，程序将退出。\n路径: " + XlsxPath);
     exit(-2);
   }
 
-  // 字体设置：尝试使用可用字体
+  // 字体设置
   QFont Font;
   QStringList PreferredFonts = {"Microsoft YaHei", "微软雅黑", "PingFang SC",
                                 "Noto Sans CJK SC", "SimHei", "黑体"};
@@ -126,7 +98,6 @@ int main(int argc, char *argv[]) {
   Font.setPointSize(16);
   App.setFont(Font);
 
-  // 全局样式：从 Qt 资源中的 QSS 文件加载，便于维护和复用
   QFile StyleFile(":/styles/app.qss");
   if (StyleFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
     App.setStyleSheet(QString::fromUtf8(StyleFile.readAll()));
@@ -137,10 +108,7 @@ int main(int argc, char *argv[]) {
                << "，错误:" << StyleFile.errorString();
   }
 
-  qInfo() << "程序开始运行";
-
-  // 每天第一次打开程序时备份（在创建 UI 之前，避免数据库关闭影响模型）
-  dailyBackup();
+  qInfo() << "程序开始运行，数据文件:" << XlsxPath;
 
   MainWindow W;
   W.show();

@@ -1,848 +1,704 @@
 #include "Library.h"
 
-#include "TSVParser.h"
+#include "xlsxdocument.h"
 
-#include <QCoreApplication>
-#include <QDebug>
-#include <QDir>
+#include <QDate>
 #include <QFile>
 #include <QFileInfo>
-#include <QSqlError>
-#include <QSqlQuery>
 
-ErrorOr<void> LibrarySystem::backupDatabaseTo(const QString &BackupPath) {
-  closeDatabase();
-  bool CopyOK = QFile::copy(DBPath, BackupPath);
-  if (!openDatabase()) {
-    return {ErrorCode::DatabaseError, "备份后重新打开数据库失败"};
-  }
-  if (!CopyOK) {
-    return {ErrorCode::InternalError, "复制数据库文件失败"};
-  }
-  return {};
-}
+#ifdef Q_OS_WIN
+#include <windows.h>
+#endif
 
-ErrorOr<bool> LibrarySystem::isBarcodeExists(const QString &Barcode) {
-  QSqlQuery Query(DB);
-  Query.prepare("SELECT 1 FROM bookcopy WHERE barcode = :code LIMIT 1");
-  Query.bindValue(":code", Barcode);
-  if (!Query.exec())
-    return {ErrorCode::DatabaseError, "查询失败: " + Query.lastError().text()};
-  return Query.next();
-}
+// ========== 文件锁（Windows 独占锁，防止 Excel 同时打开） ==========
 
-ErrorOr<void> LibrarySystem::importFromTSV(const QString &FilePath) {
-  TSVParser Parser;
-  // 1. 调用解析接口解析 TSV，获取详细报错
-  auto ParseRes = Parser.parse(FilePath);
-  if (!ParseRes) {
-    return ParseRes;
-  }
-
-  QString CoverTargetDir = DataDir + "/covers/";
-  QDir().mkpath(CoverTargetDir);
-
-  // 2. 开启事务
-  if (!DB.transaction()) {
-    return {ErrorCode::DatabaseError, "事务启动失败: " + DB.lastError().text()};
-  }
-
-  QSqlQuery Query(DB);
-  int Total = Parser.Results.size();
-  int Current = 0;
-  for (const auto &Data : std::as_const(Parser.Results)) {
-    ++Current;
-    emit importProgress(Current, Total);
-    // 拼接封面路径
-    QString SourcePath =
-        QDir(QFileInfo(FilePath).absolutePath()).filePath("photos/" + Data.ImageName + ".jpg");
-    QString TargetPath = QDir(CoverTargetDir).filePath(Data.ImageName + ".jpg");
-    QString RelativePath = "covers/" + Data.ImageName + ".jpg";
-
-    // 如果目标文件已存在，copy 会失败，建议先删除或检查
-    if (QFile::exists(SourcePath)) {
-      if (QFile::exists(TargetPath))
-        QFile::remove(TargetPath);
-      if (!QFile::copy(SourcePath, TargetPath)) {
-        DB.rollback();
-        return {ErrorCode::InternalError,
-                "导入失败: 封面图片复制失败 " + SourcePath + " -> " + TargetPath};
-      }
-    } else {
-      DB.rollback();
-      return {ErrorCode::InternalError,
-              "导入失败: 封面图片源文件不存在 " + SourcePath};
-    }
-
-    // 3. 插入书籍信息 (BookInfo)
-    Query.prepare("INSERT INTO bookinfo (title, author, publisher, cover_path) "
-                  "VALUES (:t, :a, :p, :c)");
-    Query.bindValue(":t", Data.Title);
-    Query.bindValue(":a", Data.Author);
-    Query.bindValue(":p", Data.Publisher);
-    Query.bindValue(":c", RelativePath);
-
-    if (!Query.exec()) {
-      DB.rollback();
-      return {ErrorCode::DatabaseError,
-              "导入失败: " + Query.lastError().text()};
-    }
-
-    int InfoID = Query.lastInsertId().toInt();
-
-    // 4. 插入书籍副本 (BookCopy)
-    for (const QString &Barcode : Data.Barcodes) {
-      Query.prepare("INSERT INTO bookcopy (info_id, barcode, status) "
-                    "VALUES (:iid, :bc, 0)");
-      Query.bindValue(":iid", InfoID);
-      Query.bindValue(":bc", Barcode);
-
-      if (!Query.exec()) {
-        DB.rollback();
-        return {ErrorCode::DatabaseError,
-                "导入失败: " + Query.lastError().text()};
-      }
-    }
-  }
-
-  // 5. 提交事务
-  if (DB.commit()) {
+ErrorOr<void> LibrarySystem::lockXlsxFile(const QString &Path) {
+#ifdef Q_OS_WIN
+  HANDLE h = CreateFileW(reinterpret_cast<LPCWSTR>(Path.utf16()), 0, 0, nullptr,
+                         OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+  if (h == INVALID_HANDLE_VALUE) {
+    DWORD err = GetLastError();
+    if (err == ERROR_SHARING_VIOLATION || err == ERROR_LOCK_VIOLATION)
+      return {ErrorCode::InternalError, "请关闭 Excel 后重试"};
+    // 文件不存在的情况交给 loadFromXlsx 报错
     return {};
   }
-  DB.rollback();
-  return {ErrorCode::DatabaseError, "提交失败: " + DB.lastError().text()};
-}
-
-ErrorOr<void> LibrarySystem::init(const QString &DBPath) {
-  this->DBPath = DBPath;
-  this->DataDir = QFileInfo(DBPath).absolutePath();  // 数据目录路径
-
-  if (QSqlDatabase::contains("qt_sql_default_connection")) {
-    DB = QSqlDatabase::database("qt_sql_default_connection");
-    // 如果数据库已打开且路径一致，直接复用
-    if (DB.isOpen() && DB.databaseName() == DBPath) {
-      return {};
-    }
-    // 路径不一致时，关闭旧连接
-    if (DB.isOpen()) {
-      DB.close();
-    }
-  } else {
-    DB = QSqlDatabase::addDatabase("QSQLITE");
-  }
-  DB.setDatabaseName(DBPath);
-
-  if (!DB.open())
-    return {ErrorCode::DatabaseError,
-            "无法打开数据库: " + DB.lastError().text()};
-
-  QSqlQuery Pragma(DB);
-  Pragma.exec("PRAGMA foreign_keys = ON;");
-
-  QSqlQuery Query(DB);
-
-  // 书籍信息表
-  bool OK = Query.exec("CREATE TABLE IF NOT EXISTS bookinfo ("
-                       "id INTEGER PRIMARY KEY AUTOINCREMENT,"
-                       "title TEXT NOT NULL,"
-                       "author TEXT,"
-                       "publisher TEXT,"
-                       "category_id TEXT," // 中国图书馆分类号
-                       "cover_path TEXT"
-                       ")");
-
-  // 书籍副本表
-  OK &= Query.exec(
-      QString("CREATE TABLE IF NOT EXISTS bookcopy ("
-              "id INTEGER PRIMARY KEY AUTOINCREMENT,"
-              "info_id INTEGER,"
-              "barcode TEXT UNIQUE,"
-              "status INTEGER DEFAULT %1,"
-              "FOREIGN KEY(info_id) REFERENCES bookinfo(id) ON DELETE CASCADE"
-              ")")
-          .arg(BookCopy::BookStatus::BS_InLibrary));
-
-  // 读者表
-  OK &= Query.exec(QString("CREATE TABLE IF NOT EXISTS reader ("
-                           "id INTEGER PRIMARY KEY AUTOINCREMENT,"
-                           "name TEXT NOT NULL,"
-                           "card_number TEXT UNIQUE,"
-                           "phone TEXT,"
-                           "is_inactive INTEGER DEFAULT %1)")
-                       .arg(RS_Active));
-
-  // 借阅记录表
-  OK &= Query.exec("CREATE TABLE IF NOT EXISTS borrow_record ("
-                   "id INTEGER PRIMARY KEY AUTOINCREMENT,"
-                   "reader_id INTEGER,"
-                   "copy_id INTEGER,"
-                   "borrow_date DATE DEFAULT (date('now')),"
-                   "due_date DATE,"
-                   "return_date DATE,"
-                   "FOREIGN KEY(reader_id) REFERENCES reader(id),"
-                   "FOREIGN KEY(copy_id) REFERENCES bookcopy(id)"
-                   ")");
-
-  // 为借阅记录添加唯一约束：同一本书不能有两条未归还的记录
-  // SQLite 不支持 WHERE 子句的 UNIQUE 索引语法，但可以通过唯一部分索引实现
-  Query.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_active_borrow "
-             "ON borrow_record(copy_id) WHERE return_date IS NULL");
-
-  if (!OK)
-    return {ErrorCode::DatabaseError, "建表失败: " + Query.lastError().text()};
-
+  LockHandle = h;
+#endif
   return {};
 }
+
+void LibrarySystem::unlockXlsxFile() {
+#ifdef Q_OS_WIN
+  if (LockHandle) {
+    CloseHandle(LockHandle);
+    LockHandle = nullptr;
+  }
+#endif
+}
+
+// ========== 从 xlsx 加载全部数据到内存 ==========
+
+ErrorOr<void> LibrarySystem::loadFromXlsx() {
+  QXlsx::Document xlsx(XlsxPath);
+  if (!xlsx.load())
+    return {ErrorCode::DatabaseError, "无法打开 Excel 文件: " + XlsxPath};
+
+  // 清空内存
+  Infos.clear();
+  Copies.clear();
+  Readers.clear();
+  Borrows.clear();
+  BarcodeToCopyIdx.clear();
+  CardToReaderIdx.clear();
+  BarcodeNotes.clear();
+  NextInfoID = 1;
+  NextCopyID = 1;
+  NextReaderID = 1;
+  NextBorrowID = 1;
+
+  QStringList sheets = xlsx.sheetNames();
+  if (sheets.isEmpty())
+    return {ErrorCode::DatabaseError, "Excel 文件没有 Sheet"};
+
+  // ---- 主 Sheet（第一个 Sheet）：书名/作者/出版社/数量/编号/重新生成的编号/备注/状态 ----
+  xlsx.selectSheet(sheets[0]);
+  int rowCount = xlsx.dimension().rowCount();
+  int colCount = xlsx.dimension().columnCount();
+
+  for (int row = 2; row <= rowCount; ++row) {
+    QString title = xlsx.read(row, 1).toString().trimmed();
+    if (title.isEmpty())
+      continue;
+
+    QString author = xlsx.read(row, 2).toString().trimmed();
+    QString publisher = xlsx.read(row, 3).toString().trimmed();
+    QString imageNo = xlsx.read(row, 5).toString().trimmed();
+    QString barcode = xlsx.read(row, 6).toString().trimmed();
+    QString notes = xlsx.read(row, 7).toString().trimmed();
+
+    if (barcode.isEmpty())
+      continue;
+
+    int status = 0;
+    if (colCount >= 8)
+      status = xlsx.read(row, 8).toInt();
+
+    QString coverPath = "covers/" + imageNo + ".jpg";
+
+    BookInfo info;
+    info.ID = NextInfoID++;
+    info.Title = title;
+    info.Author = author;
+    info.Publisher = publisher;
+    info.CoverPath = coverPath;
+    Infos.append(info);
+
+    BookCopy copy;
+    copy.ID = NextCopyID++;
+    copy.InfoID = info.ID;
+    copy.Barcode = barcode;
+    copy.Status = static_cast<BookCopy::BookStatus>(status);
+    Copies.append(copy);
+    BarcodeToCopyIdx[barcode] = Copies.size() - 1;
+    if (!notes.isEmpty())
+      BarcodeNotes[barcode] = notes;
+  }
+
+  // ---- _readers Sheet ----
+  if (sheets.contains("_readers")) {
+    xlsx.selectSheet("_readers");
+    int rMax = xlsx.dimension().rowCount();
+    for (int row = 2; row <= rMax; ++row) {
+      QString name = xlsx.read(row, 1).toString().trimmed();
+      if (name.isEmpty())
+        continue;
+      Reader r;
+      r.ID = NextReaderID++;
+      r.Name = name;
+      r.CardNumber = xlsx.read(row, 2).toString().trimmed();
+      r.PhoneNumber = xlsx.read(row, 3).toString().trimmed();
+      r.IsInactive = xlsx.read(row, 4).toInt() != 0;
+      Readers.append(r);
+      if (!r.CardNumber.isEmpty())
+        CardToReaderIdx[r.CardNumber] = Readers.size() - 1;
+    }
+  }
+
+  // ---- _borrows Sheet ----
+  if (sheets.contains("_borrows")) {
+    xlsx.selectSheet("_borrows");
+    int bMax = xlsx.dimension().rowCount();
+    for (int row = 2; row <= bMax; ++row) {
+      QVariant idVal = xlsx.read(row, 1);
+      if (idVal.isNull() || idVal.toString().trimmed().isEmpty())
+        continue;
+
+      BorrowRecord br;
+      br.ID = idVal.toInt();
+      if (br.ID >= NextBorrowID)
+        NextBorrowID = br.ID + 1;
+
+      QString cardNumber = xlsx.read(row, 2).toString().trimmed();
+      QString barcode = xlsx.read(row, 3).toString().trimmed();
+
+      if (CardToReaderIdx.contains(cardNumber))
+        br.ReaderId = Readers[CardToReaderIdx[cardNumber]].ID;
+      if (BarcodeToCopyIdx.contains(barcode))
+        br.CopyId = Copies[BarcodeToCopyIdx[barcode]].ID;
+
+      QString borrowStr = xlsx.read(row, 4).toString().trimmed();
+      QString dueStr = xlsx.read(row, 5).toString().trimmed();
+      QString returnStr = xlsx.read(row, 6).toString().trimmed();
+      br.BorrowDate = QDateTime::fromString(borrowStr, "yyyy-MM-dd");
+      br.DueDate = QDateTime::fromString(dueStr, "yyyy-MM-dd");
+      if (!returnStr.isEmpty())
+        br.ReturnDate = QDateTime::fromString(returnStr, "yyyy-MM-dd");
+
+      Borrows.append(br);
+    }
+  }
+
+  // 回到主 Sheet
+  xlsx.selectSheet(sheets[0]);
+  return {};
+}
+
+// ========== 全量保存内存数据到 xlsx ==========
+
+ErrorOr<void> LibrarySystem::saveToXlsx() {
+  unlockXlsxFile();
+
+  QXlsx::Document xlsx;
+
+  // ---- 主 Sheet：书名/作者/出版社/数量/编号/重新生成的编号/备注/状态 ----
+  QStringList headers = {"书名", "作者", "出版社", "数量", "编号",
+                         "重新生成的编号", "备注", "状态"};
+  for (int c = 0; c < headers.size(); ++c)
+    xlsx.write(1, c + 1, headers[c]);
+
+  int row = 2;
+  for (const auto &copy : std::as_const(Copies)) {
+    // 查找对应 BookInfo
+    const BookInfo *info = nullptr;
+    for (const auto &inf : std::as_const(Infos)) {
+      if (inf.ID == copy.InfoID) {
+        info = &inf;
+        break;
+      }
+    }
+    if (!info)
+      continue;
+
+    // 从 CoverPath "covers/xxx.jpg" 提取图片编号 "xxx"
+    QString imageNo;
+    const QString &cp = info->CoverPath;
+    if (cp.startsWith("covers/") && cp.endsWith(".jpg"))
+      imageNo = cp.mid(7, cp.length() - 11);
+
+    xlsx.write(row, 1, info->Title);
+    xlsx.write(row, 2, info->Author);
+    xlsx.write(row, 3, info->Publisher);
+    xlsx.write(row, 4, 1);                      // 数量
+    xlsx.write(row, 5, imageNo);                // 编号
+    xlsx.write(row, 6, copy.Barcode);           // 重新生成的编号
+    xlsx.write(row, 7, BarcodeNotes.value(copy.Barcode)); // 备注
+    xlsx.write(row, 8, static_cast<int>(copy.Status));    // 状态
+    ++row;
+  }
+
+  // ---- _readers Sheet ----
+  xlsx.addSheet("_readers");
+  QStringList rHeaders = {"姓名", "卡号", "电话", "是否注销"};
+  for (int c = 0; c < rHeaders.size(); ++c)
+    xlsx.write(1, c + 1, rHeaders[c]);
+  int rRow = 2;
+  for (const auto &r : std::as_const(Readers)) {
+    xlsx.write(rRow, 1, r.Name);
+    xlsx.write(rRow, 2, r.CardNumber);
+    xlsx.write(rRow, 3, r.PhoneNumber);
+    xlsx.write(rRow, 4, r.IsInactive ? 1 : 0);
+    ++rRow;
+  }
+
+  // ---- _borrows Sheet ----
+  xlsx.addSheet("_borrows");
+  QStringList bHeaders = {"id", "读者卡号", "书籍条码", "借书日期",
+                          "应还日期", "归还日期"};
+  for (int c = 0; c < bHeaders.size(); ++c)
+    xlsx.write(1, c + 1, bHeaders[c]);
+  int bRow = 2;
+  for (const auto &br : std::as_const(Borrows)) {
+    // 解析外键为自然键
+    QString cardNumber, barcode;
+    for (const auto &r : std::as_const(Readers)) {
+      if (r.ID == br.ReaderId) {
+        cardNumber = r.CardNumber;
+        break;
+      }
+    }
+    for (const auto &c : std::as_const(Copies)) {
+      if (c.ID == br.CopyId) {
+        barcode = c.Barcode;
+        break;
+      }
+    }
+
+    xlsx.write(bRow, 1, br.ID);
+    xlsx.write(bRow, 2, cardNumber);
+    xlsx.write(bRow, 3, barcode);
+    xlsx.write(bRow, 4, br.BorrowDate.toString("yyyy-MM-dd"));
+    xlsx.write(bRow, 5, br.DueDate.toString("yyyy-MM-dd"));
+    if (br.ReturnDate.isValid())
+      xlsx.write(bRow, 6, br.ReturnDate.toString("yyyy-MM-dd"));
+    ++bRow;
+  }
+
+  // 回到主 Sheet
+  xlsx.selectSheet(xlsx.sheetNames()[0]);
+
+  if (!xlsx.saveAs(XlsxPath)) {
+    lockXlsxFile(XlsxPath);
+    return {ErrorCode::DatabaseError, "保存 Excel 文件失败"};
+  }
+
+  return lockXlsxFile(XlsxPath);
+}
+
+// ========== 初始化 ==========
+
+ErrorOr<void> LibrarySystem::init(const QString &XlsxPath) {
+  this->XlsxPath = XlsxPath;
+  this->DataDir = QFileInfo(XlsxPath).absolutePath();
+
+  if (!QFile::exists(XlsxPath))
+    return {ErrorCode::DatabaseError, "Excel 文件不存在: " + XlsxPath};
+
+  // 先加载数据，再锁定文件（锁定后 QXlsx 读不了）
+  auto loadRes = loadFromXlsx();
+  if (!loadRes)
+    return loadRes;
+
+  return lockXlsxFile(XlsxPath);
+}
+
+// ========== 通过条码查询书籍信息 ==========
 
 ErrorOr<std::pair<BookInfo, BookCopy>>
 LibrarySystem::getBookDataByBarcode(const QString &Barcode) {
-  QSqlQuery Query(DB);
-  Query.prepare(R"(
-        SELECT 
-            bi.id, bi.title, bi.author, bi.publisher, bi.cover_path,
-            bc.id, bc.info_id, bc.barcode, bc.status
-        FROM bookcopy bc
-        JOIN bookinfo bi ON bc.info_id = bi.id
-        WHERE bc.barcode = :barcode
-    )");
+  if (!BarcodeToCopyIdx.contains(Barcode))
+    return {ErrorCode::NotFound, "条码不存在: " + Barcode};
 
-  Query.bindValue(":barcode", Barcode);
-
-  if (!Query.exec())
-    return {ErrorCode::DatabaseError,
-            "查询书籍失败:" + Query.lastError().text()};
-
-  if (Query.next()) {
-    BookInfo Info;
-    BookCopy Copy;
-
-    Info.ID = Query.value(0).toInt();
-    Info.Title = Query.value(1).toString();
-    Info.Author = Query.value(2).toString();
-    Info.Publisher = Query.value(3).toString();
-    Info.CoverPath = Query.value(4).toString();
-
-    Copy.ID = Query.value(5).toInt();
-    Copy.InfoID = Query.value(6).toInt();
-    Copy.Barcode = Query.value(7).toString();
-    Copy.Status = static_cast<BookCopy::BookStatus>(Query.value(8).toInt());
-
-    return std::make_pair(Info, Copy);
+  const BookCopy &copy = Copies[BarcodeToCopyIdx[Barcode]];
+  for (const auto &info : std::as_const(Infos)) {
+    if (info.ID == copy.InfoID)
+      return std::make_pair(info, copy);
   }
-
-  return {ErrorCode::NotFound, "条码不存在: " + Barcode};
+  return {ErrorCode::InternalError, "数据不一致：副本关联的书籍信息不存在"};
 }
+
+// ========== 通过卡号查询读者 ==========
 
 ErrorOr<Reader>
 LibrarySystem::getReaderByCardNumber(const QString &CardNumber) {
-  QSqlQuery Query(DB);
-  Query.prepare("SELECT id, name, card_number, phone, is_inactive FROM reader WHERE "
-                "card_number = :card");
-  Query.bindValue(":card", CardNumber);
-
-  if (Query.exec() && Query.next()) {
-    Reader Rdr;
-    Rdr.ID = Query.value("id").toInt();
-    Rdr.Name = Query.value("name").toString();
-    Rdr.CardNumber = Query.value("card_number").toString();
-    Rdr.PhoneNumber = Query.value("phone").toString();
-    Rdr.IsInactive = Query.value("is_inactive").toBool();
-    return Rdr;
-  }
-  return {ErrorCode::NotFound, "读者不存在: " + CardNumber};
+  if (!CardToReaderIdx.contains(CardNumber))
+    return {ErrorCode::NotFound, "读者不存在: " + CardNumber};
+  return Readers[CardToReaderIdx[CardNumber]];
 }
 
-ErrorOr<void> LibrarySystem::borrowBook(QSqlQuery &Query, const int ReaderID,
-                                        const int CopyID) {
-  // 检查书籍当前状态
-  Query.prepare("SELECT status FROM bookcopy WHERE id = :cid");
-  Query.bindValue(":cid", CopyID);
-  if (!Query.exec())
-    return {ErrorCode::DatabaseError,
-            "查询书籍副本状态失败: " + Query.lastError().text()};
-  if (!Query.next())
-    return {ErrorCode::NotFound,
-            "未找到书籍副本，副本ID: " + QString::number(CopyID)};
+// ========== 借书（单本，内存操作） ==========
 
-  int Status = Query.value(0).toInt();
-  if (Status == BookCopy::BookStatus::BS_Borrowed)
+ErrorOr<void> LibrarySystem::borrowBook(int ReaderID, int CopyID) {
+  // 查找副本
+  int copyIdx = -1;
+  for (int i = 0; i < Copies.size(); ++i) {
+    if (Copies[i].ID == CopyID) {
+      copyIdx = i;
+      break;
+    }
+  }
+  if (copyIdx < 0)
+    return {ErrorCode::NotFound, "未找到书籍副本，副本ID: " + QString::number(CopyID)};
+
+  const BookCopy &copy = Copies[copyIdx];
+  if (copy.Status == BookCopy::BS_Borrowed)
     return {ErrorCode::InvalidStatus, "该书籍目前处于'借出'状态，无法再次借出"};
-  if (Status == BookCopy::BookStatus::BS_Lost)
+  if (copy.Status == BookCopy::BS_Lost)
     return {ErrorCode::InvalidStatus, "该书籍目前处于'遗失'状态，无法借出"};
-  if (Status == BookCopy::BookStatus::BS_NonLendable)
+  if (copy.Status == BookCopy::BS_NonLendable)
     return {ErrorCode::InvalidStatus, "该书籍目前处于'非外借书'状态，无法借出"};
 
-  Query.prepare(
-      "INSERT INTO borrow_record (reader_id, copy_id, borrow_date, due_date) "
-      "VALUES (:rid, :cid, date('now'), date('now', '+30 days'))");
-  Query.bindValue(":rid", ReaderID);
-  Query.bindValue(":cid", CopyID);
+  // 创建借阅记录
+  BorrowRecord br;
+  br.ID = NextBorrowID++;
+  br.ReaderId = ReaderID;
+  br.CopyId = CopyID;
+  br.BorrowDate = QDateTime::currentDateTime();
+  br.DueDate = br.BorrowDate.addDays(30);
+  Borrows.append(br);
 
-  if (!Query.exec())
-    return {ErrorCode::DatabaseError,
-            "写入借阅记录失败: " + Query.lastError().text()};
-
-  Query.prepare("UPDATE bookcopy SET status = :status WHERE id = :id");
-  Query.bindValue(":status", BookCopy::BS_Borrowed);
-  Query.bindValue(":id", CopyID);
-
-  if (!Query.exec())
-    return {ErrorCode::DatabaseError,
-            "更新书籍状态失败: " + Query.lastError().text()};
+  // 更新副本状态
+  Copies[copyIdx].Status = BookCopy::BS_Borrowed;
   return {};
 }
+
+// ========== 批量借书 ==========
 
 ErrorOr<void> LibrarySystem::borrowBooks(int ReaderID,
                                          const QVector<int> &CopyIDs) {
   if (CopyIDs.isEmpty())
     return {ErrorCode::ValidationError, "未选择任何书籍"};
 
-  if (!DB.transaction()) {
-    return {ErrorCode::DatabaseError, "事务启动失败: " + DB.lastError().text()};
+  // 检查读者是否存在且未注销
+  Reader *reader = nullptr;
+  for (auto &r : Readers) {
+    if (r.ID == ReaderID) {
+      reader = &r;
+      break;
+    }
   }
-
-  QSqlQuery Query(DB);
-
-  // 检查读者状态（只查询一次）
-  Query.prepare("SELECT is_inactive FROM reader WHERE id = :rid");
-  Query.bindValue(":rid", ReaderID);
-  if (!Query.exec()) {
-    DB.rollback();
-    return {ErrorCode::DatabaseError,
-            "查询读者状态失败: " + Query.lastError().text()};
-  }
-  if (!Query.next()) {
-    DB.rollback();
+  if (!reader)
     return {ErrorCode::NotFound, "读者不存在"};
-  }
-  if (Query.value(0).toInt() == RS_InActive) {
-    DB.rollback();
+  if (reader->IsInactive)
     return {ErrorCode::InvalidStatus, "该读者已注销，无法借书"};
+
+  for (int cid : CopyIDs) {
+    auto res = borrowBook(ReaderID, cid);
+    if (!res)
+      return res;
   }
 
-  for (int CID : CopyIDs) {
-    auto Res = borrowBook(Query, ReaderID, CID);
-    if (!Res) {
-      DB.rollback();
-      return Res;
-    }
-  }
-
-  if (DB.commit())
-    return {};
-  DB.rollback();
-  return {ErrorCode::DatabaseError,
-          "提交借书事务失败: " + DB.lastError().text()};
+  return saveToXlsx();
 }
 
-ErrorOr<QVector<BorrowDetailType>>
-LibrarySystem::getBorrowingDetailsByReader(int ReaderId) {
-  QVector<BorrowDetailType> Results;
-  QSqlQuery Query(DB);
+// ========== 归还（单本，内存操作） ==========
 
-  QString Sql =
-      "SELECT "
-      "br.id, br.reader_id, br.copy_id, br.borrow_date, br.due_date, "
-      "br.return_date, "                                         // br (0-5)
-      "bc.id, bc.info_id, bc.barcode, bc.status, "               // bc (6-9)
-      "bi.id, bi.title, bi.author, bi.publisher, bi.cover_path " // bi (10-14)
-      "FROM borrow_record br "
-      "JOIN bookcopy bc ON br.copy_id = bc.id "
-      "JOIN bookinfo bi ON bc.info_id = bi.id "
-      "WHERE br.reader_id = :rid AND br.return_date IS NULL"; // 只查未归还的
-
-  Query.prepare(Sql);
-  Query.bindValue(":rid", ReaderId);
-
-  if (Query.exec()) {
-    while (Query.next()) {
-      BorrowDetailType Detail;
-
-      // 填充 BorrowRecord (0-5)
-      Detail.Record.ID = Query.value(0).toInt();
-      Detail.Record.ReaderId = Query.value(1).toInt();
-      Detail.Record.CopyId = Query.value(2).toInt();
-      Detail.Record.BorrowDate = Query.value(3).toDateTime();
-      Detail.Record.DueDate = Query.value(4).toDateTime();
-      Detail.Record.ReturnDate = Query.value(5).toDateTime();
-
-      // 填充 BookCopy (6-9)
-      Detail.Copy.ID = Query.value(6).toInt();
-      Detail.Copy.InfoID = Query.value(7).toInt();
-      Detail.Copy.Barcode = Query.value(8).toString();
-      Detail.Copy.Status =
-          static_cast<BookCopy::BookStatus>(Query.value(9).toInt());
-
-      // 填充 BookInfo (10-14)
-      Detail.Info.ID = Query.value(10).toInt();
-      Detail.Info.Title = Query.value(11).toString();
-      Detail.Info.Author = Query.value(12).toString();
-      Detail.Info.Publisher = Query.value(13).toString();
-      Detail.Info.CoverPath = Query.value(14).toString();
-
-      Results.append(Detail);
+ErrorOr<void> LibrarySystem::returnBook(int RecordID) {
+  int brIdx = -1;
+  for (int i = 0; i < Borrows.size(); ++i) {
+    if (Borrows[i].ID == RecordID) {
+      brIdx = i;
+      break;
     }
-    return Results;
   }
-  return {ErrorCode::DatabaseError,
-          "获取读者借阅详情失败: " + Query.lastError().text()};
-}
+  if (brIdx < 0)
+    return {ErrorCode::NotFound, "未找到借阅记录，记录ID: " + QString::number(RecordID)};
 
-ErrorOr<void> LibrarySystem::returnBook(QSqlQuery &Query, const int RecordID) {
-  int CopyId = -1;
-  int Status = -1;
+  BorrowRecord &br = Borrows[brIdx];
+  if (br.ReturnDate.isValid())
+    return {ErrorCode::InvalidStatus, "该借阅记录已归还，无法重复操作"};
 
-  // 获取副本ID及其状态，同时检查是否已归还
-  Query.prepare(
-      "SELECT br.copy_id, bc.status, br.return_date FROM borrow_record br "
-      "JOIN bookcopy bc ON br.copy_id = bc.id "
-      "WHERE br.id = :rid");
-  Query.bindValue(":rid", RecordID);
-  if (!Query.exec())
-    return {ErrorCode::DatabaseError,
-            "查询借阅记录失败: " + Query.lastError().text()};
-  if (!Query.next())
-    return {ErrorCode::NotFound,
-            "未找到借阅记录，记录ID: " + QString::number(RecordID)};
+  // 查找副本
+  int copyIdx = -1;
+  for (int i = 0; i < Copies.size(); ++i) {
+    if (Copies[i].ID == br.CopyId) {
+      copyIdx = i;
+      break;
+    }
+  }
+  if (copyIdx < 0)
+    return {ErrorCode::InternalError, "数据不一致：借阅记录关联的副本不存在"};
 
-  // 检查该记录是否已归还
-  if (!Query.value(2).isNull())
-    return {ErrorCode::InvalidStatus,
-            "该借阅记录已归还，无法重复操作"};
-
-  CopyId = Query.value(0).toInt();
-  Status = Query.value(1).toInt();
-
-  if (Status == BookCopy::BookStatus::BS_Lost)
+  const BookCopy &copy = Copies[copyIdx];
+  if (copy.Status == BookCopy::BS_Lost)
     return {ErrorCode::InvalidStatus, "该书籍处于'遗失'状态，请先办理挂失处理后再归还"};
-  if (Status == BookCopy::BookStatus::BS_NonLendable)
+  if (copy.Status == BookCopy::BS_NonLendable)
     return {ErrorCode::InvalidStatus, "该书籍处于'非外借书'状态，无法归还"};
 
-  // 更新归还日期
-  Query.prepare(
-      "UPDATE borrow_record SET return_date = date('now') WHERE id = :rid");
-  Query.bindValue(":rid", RecordID);
-  if (!Query.exec())
-    return {ErrorCode::DatabaseError,
-            "更新归还时间失败: " + Query.lastError().text()};
-
-  // 更新书籍副本状态为 0 (在库)
-  Query.prepare("UPDATE bookcopy SET status = 0 WHERE id = :cid");
-  Query.bindValue(":cid", CopyId);
-  if (!Query.exec())
-    return {ErrorCode::DatabaseError,
-            "恢复书籍在库状态失败: " + Query.lastError().text()};
-
+  br.ReturnDate = QDateTime::currentDateTime();
+  Copies[copyIdx].Status = BookCopy::BS_InLibrary;
   return {};
 }
 
-ErrorOr<void> LibrarySystem::returnBooks(const QList<int> &RecordIDs) {
-  if (RecordIDs.isEmpty())
-    return {};
+// ========== 续借（单本，内存操作） ==========
 
-  if (!DB.transaction()) {
-    return {ErrorCode::DatabaseError, "事务启动失败: " + DB.lastError().text()};
-  }
-
-  QSqlQuery Query(DB);
-  for (int RID : RecordIDs) {
-    auto Res = returnBook(Query, RID);
-    if (!Res) {
-      DB.rollback();
-      return Res;
+ErrorOr<void> LibrarySystem::renewBook(int RecordID) {
+  int brIdx = -1;
+  for (int i = 0; i < Borrows.size(); ++i) {
+    if (Borrows[i].ID == RecordID) {
+      brIdx = i;
+      break;
     }
   }
+  if (brIdx < 0)
+    return {ErrorCode::NotFound, "未找到借阅记录，记录ID: " + QString::number(RecordID)};
 
-  if (DB.commit()) {
-    return {};
+  BorrowRecord &br = Borrows[brIdx];
+  if (br.ReturnDate.isValid())
+    return {ErrorCode::InvalidStatus, "该借阅记录已归还，无法续借"};
+
+  int copyIdx = -1;
+  for (int i = 0; i < Copies.size(); ++i) {
+    if (Copies[i].ID == br.CopyId) {
+      copyIdx = i;
+      break;
+    }
   }
+  if (copyIdx < 0)
+    return {ErrorCode::InternalError, "数据不一致：借阅记录关联的副本不存在"};
 
-  DB.rollback();
-  return {ErrorCode::DatabaseError,
-          "提交归还事务失败: " + DB.lastError().text()};
-}
-
-ErrorOr<void> LibrarySystem::renewBook(QSqlQuery &Query, const int RecordID) {
-  // 先查询借阅记录对应的书籍副本状态，同时检查是否已归还
-  Query.prepare(
-      "SELECT bc.status, br.return_date FROM borrow_record br "
-      "JOIN bookcopy bc ON br.copy_id = bc.id "
-      "WHERE br.id = :rid");
-  Query.bindValue(":rid", RecordID);
-  if (!Query.exec())
-    return {ErrorCode::DatabaseError,
-            "查询借阅记录失败: " + Query.lastError().text()};
-  if (!Query.next())
-    return {ErrorCode::NotFound,
-            "未找到借阅记录，记录ID: " + QString::number(RecordID)};
-
-  // 检查该记录是否已归还
-  if (!Query.value(1).isNull())
-    return {ErrorCode::InvalidStatus,
-            "该借阅记录已归还，无法续借"};
-
-  int Status = Query.value(0).toInt();
-  if (Status == BookCopy::BookStatus::BS_Lost)
+  const BookCopy &copy = Copies[copyIdx];
+  if (copy.Status == BookCopy::BS_Lost)
     return {ErrorCode::InvalidStatus, "该书籍处于'遗失'状态，无法续借"};
-  if (Status == BookCopy::BookStatus::BS_NonLendable)
+  if (copy.Status == BookCopy::BS_NonLendable)
     return {ErrorCode::InvalidStatus, "该书籍处于'非外借书'状态，无法续借"};
 
-  Query.prepare(
-      "UPDATE borrow_record SET due_date = date(due_date, '+30 days') "
-      "WHERE id = :rid");
-  Query.bindValue(":rid", RecordID);
-
-  if (!Query.exec())
-    return {ErrorCode::DatabaseError,
-            "更新续借时间失败: " + Query.lastError().text()};
+  br.DueDate = br.DueDate.addDays(30);
   return {};
 }
 
-ErrorOr<void> LibrarySystem::renewBooks(const QList<int> &RecordIDs) {
-  if (RecordIDs.isEmpty())
-    return {};
+// ========== 归还 + 续借（同一事务） ==========
 
-  if (!DB.transaction()) {
-    return {ErrorCode::DatabaseError, "事务启动失败: " + DB.lastError().text()};
-  }
-
-  QSqlQuery Query(DB);
-  for (int RID : RecordIDs) {
-    auto Res = renewBook(Query, RID);
-    if (!Res) {
-      DB.rollback();
-      return Res;
-    }
-  }
-
-  if (DB.commit()) {
-    return {};
-  }
-
-  DB.rollback();
-  return {ErrorCode::DatabaseError,
-          "提交续借事务失败: " + DB.lastError().text()};
-}
-
-ErrorOr<void> LibrarySystem::returnAndRenewBooks(
-    const QList<int> &ReturnRecordIDs, const QList<int> &RenewRecordIDs) {
+ErrorOr<void>
+LibrarySystem::returnAndRenewBooks(const QList<int> &ReturnRecordIDs,
+                                   const QList<int> &RenewRecordIDs) {
   if (ReturnRecordIDs.isEmpty() && RenewRecordIDs.isEmpty())
     return {};
 
-  if (!DB.transaction()) {
-    return {ErrorCode::DatabaseError, "事务启动失败: " + DB.lastError().text()};
+  for (int rid : ReturnRecordIDs) {
+    auto res = returnBook(rid);
+    if (!res)
+      return res;
   }
-
-  QSqlQuery Query(DB);
-
-  // 先执行归还
-  for (int RID : ReturnRecordIDs) {
-    auto Res = returnBook(Query, RID);
-    if (!Res) {
-      DB.rollback();
-      return Res;
-    }
+  for (int rid : RenewRecordIDs) {
+    auto res = renewBook(rid);
+    if (!res)
+      return res;
   }
-
-  // 再执行续借
-  for (int RID : RenewRecordIDs) {
-    auto Res = renewBook(Query, RID);
-    if (!Res) {
-      DB.rollback();
-      return Res;
-    }
-  }
-
-  if (DB.commit()) {
-    return {};
-  }
-
-  DB.rollback();
-  return {ErrorCode::DatabaseError,
-          "提交归还/续借事务失败: " + DB.lastError().text()};
+  return saveToXlsx();
 }
+
+// ========== 查询某读者的借阅详情（未归还的） ==========
+
+ErrorOr<QVector<BorrowDetailType>>
+LibrarySystem::getBorrowingDetailsByReader(int ReaderId) {
+  QVector<BorrowDetailType> results;
+  for (const auto &br : std::as_const(Borrows)) {
+    if (br.ReaderId != ReaderId)
+      continue;
+    if (br.ReturnDate.isValid())
+      continue; // 已归还的跳过
+
+    // 查找对应 Copy 和 Info
+    const BookCopy *copy = nullptr;
+    for (const auto &c : std::as_const(Copies)) {
+      if (c.ID == br.CopyId) {
+        copy = &c;
+        break;
+      }
+    }
+    if (!copy)
+      continue;
+    const BookInfo *info = nullptr;
+    for (const auto &inf : std::as_const(Infos)) {
+      if (inf.ID == copy->InfoID) {
+        info = &inf;
+        break;
+      }
+    }
+    if (!info)
+      continue;
+
+    BorrowDetailType detail;
+    detail.Record = br;
+    detail.Copy = *copy;
+    detail.Info = *info;
+    results.append(detail);
+  }
+  return results;
+}
+
+// ========== 综合查询（条码/书名/作者/出版社，支持模糊） ==========
 
 ErrorOr<QVector<std::pair<BorrowDetailType, Reader>>>
 LibrarySystem::queryBooks(const QString &Barcode, const QString &Title,
                           const QString &Author, const QString &Publisher) {
-  QVector<std::pair<BorrowDetailType, Reader>> Results;
-  QSqlQuery Query(DB);
+  QVector<std::pair<BorrowDetailType, Reader>> results;
 
-  QString Sql =
-      "SELECT "
-      "bi.id, bi.title, bi.author, bi.publisher, bi.cover_path, " // bi (0-4)
-      "bc.id, bc.barcode, bc.status, "                            // bc (5-7)
-      "r.id, r.name, r.card_number, r.phone, "                    // r  (8-11)
-      "br.id, br.borrow_date, br.due_date, br.return_date "       // br (12-15)
-      "FROM bookinfo bi "
-      "JOIN bookcopy bc ON bi.id = bc.info_id "
-      "LEFT JOIN borrow_record br ON bc.id = br.copy_id AND br.return_date IS "
-      "NULL "
-      "LEFT JOIN reader r ON br.reader_id = r.id "
-      "WHERE 1=1 ";
+  for (const auto &copy : std::as_const(Copies)) {
+    // 模糊匹配
+    if (!Barcode.isEmpty() && !copy.Barcode.contains(Barcode, Qt::CaseInsensitive))
+      continue;
 
-  if (!Barcode.isEmpty())
-    Sql += " AND bc.barcode LIKE :barcode";
-  if (!Title.isEmpty())
-    Sql += " AND bi.title LIKE :title";
-  if (!Author.isEmpty())
-    Sql += " AND bi.author LIKE :author";
-  if (!Publisher.isEmpty())
-    Sql += " AND bi.publisher LIKE :publisher";
+    const BookInfo *info = nullptr;
+    for (const auto &inf : std::as_const(Infos)) {
+      if (inf.ID == copy.InfoID) {
+        info = &inf;
+        break;
+      }
+    }
+    if (!info)
+      continue;
 
-  Query.prepare(Sql);
+    if (!Title.isEmpty() && !info->Title.contains(Title, Qt::CaseInsensitive))
+      continue;
+    if (!Author.isEmpty() && !info->Author.contains(Author, Qt::CaseInsensitive))
+      continue;
+    if (!Publisher.isEmpty() &&
+        !info->Publisher.contains(Publisher, Qt::CaseInsensitive))
+      continue;
 
-  if (!Barcode.isEmpty())
-    Query.bindValue(":barcode", "%" + Barcode + "%");
-  if (!Title.isEmpty())
-    Query.bindValue(":title", "%" + Title + "%");
-  if (!Author.isEmpty())
-    Query.bindValue(":author", "%" + Author + "%");
-  if (!Publisher.isEmpty())
-    Query.bindValue(":publisher", "%" + Publisher + "%");
+    BorrowDetailType detail;
+    detail.Copy = copy;
+    detail.Info = *info;
+    detail.Record.ID = -1;
 
-  if (!Query.exec()) {
-    return {ErrorCode::DatabaseError,
-            "查询执行失败: " + Query.lastError().text()};
-  }
+    Reader reader;
+    reader.ID = -1;
 
-  while (Query.next()) {
-    BorrowDetailType Detail;
-    Reader Rdr;
-
-    Detail.Info.ID = Query.value(0).toInt();
-    Detail.Info.Title = Query.value(1).toString();
-    Detail.Info.Author = Query.value(2).toString();
-    Detail.Info.Publisher = Query.value(3).toString();
-    Detail.Info.CoverPath = Query.value(4).toString();
-
-    Detail.Copy.ID = Query.value(5).toInt();
-    Detail.Copy.Barcode = Query.value(6).toString();
-    Detail.Copy.Status =
-        static_cast<BookCopy::BookStatus>(Query.value(7).toInt());
-
-    if (Query.value(8).isNull()) {
-      Rdr.ID = -1;
-      Detail.Record.ID = -1;
-    } else {
-      Rdr.ID = Query.value(8).toInt();
-      Rdr.Name = Query.value(9).toString();
-      Rdr.CardNumber = Query.value(10).toString();
-      Rdr.PhoneNumber = Query.value(11).toString();
-
-      Detail.Record.ID = Query.value(12).toInt();
-      Detail.Record.BorrowDate = Query.value(13).toDateTime();
-      Detail.Record.DueDate = Query.value(14).toDateTime();
-      Detail.Record.ReturnDate = Query.value(15).toDateTime();
-      Detail.Record.ReaderId = Rdr.ID;
-      Detail.Record.CopyId = Detail.Copy.ID;
+    // 查找未归还的借阅记录及相关读者
+    for (const auto &br : std::as_const(Borrows)) {
+      if (br.CopyId == copy.ID && !br.ReturnDate.isValid()) {
+        detail.Record = br;
+        for (const auto &r : std::as_const(Readers)) {
+          if (r.ID == br.ReaderId) {
+            reader = r;
+            break;
+          }
+        }
+        break;
+      }
     }
 
-    Results.append(std::make_pair(Detail, Rdr));
+    results.append(std::make_pair(detail, reader));
   }
-
-  return Results;
+  return results;
 }
 
-ErrorOr<QSet<QString>>
-LibrarySystem::checkExistingBarcodes(const QSet<QString> &Barcodes) {
-  QSet<QString> Found;
-  if (Barcodes.isEmpty())
-    return Found;
-
-  QStringList Placeholders;
-  for (int Idx = 0; Idx < Barcodes.size(); ++Idx) {
-    Placeholders << "?";
-  }
-
-  QString QueryStr =
-      QString("SELECT barcode FROM bookcopy WHERE barcode IN (%1)")
-          .arg(Placeholders.join(","));
-
-  QSqlQuery Query(DB);
-  Query.prepare(QueryStr);
-
-  int Idx = 0;
-  for (const auto &Code : Barcodes) {
-    Query.bindValue(Idx++, Code);
-  }
-
-  if (Query.exec()) {
-    while (Query.next()) {
-      Found.insert(Query.value(0).toString());
-    }
-  } else {
-    return {ErrorCode::DatabaseError,
-            "批量检查条码失败: " + Query.lastError().text()};
-  }
-  return Found;
-}
+// ========== 生成新读者卡号 ==========
 
 ErrorOr<QString> LibrarySystem::getNewReaderCardID() {
-  QSqlQuery Query(DB);
-  if (!Query.exec("SELECT MAX(CAST(card_number AS INTEGER)) FROM reader")) {
-    return {ErrorCode::DatabaseError,
-            "数据库查询失败: " + Query.lastError().text()};
+  int maxId = 2000000;
+  for (const auto &r : std::as_const(Readers)) {
+    bool ok;
+    int id = r.CardNumber.toInt(&ok);
+    if (ok && id > maxId)
+      maxId = id;
   }
+  return QString::number(maxId + 1);
+}
 
-  int NewID = 2000000;
-  if (Query.next()) {
-    QVariant Value = Query.value(0);
-    if (!Value.isNull()) {
-      NewID = Value.toInt() + 1;
+// ========== 读者管理 ==========
+
+ErrorOr<QVector<Reader>> LibrarySystem::getAllReaders() {
+  return Readers;
+}
+
+ErrorOr<void> LibrarySystem::addReader(const QString &Name,
+                                       const QString &CardNumber,
+                                       const QString &PhoneNumber) {
+  // 卡号唯一性检查
+  if (CardToReaderIdx.contains(CardNumber))
+    return {ErrorCode::ValidationError, "卡号已存在: " + CardNumber};
+
+  Reader r;
+  r.ID = NextReaderID++;
+  r.Name = Name;
+  r.CardNumber = CardNumber;
+  r.PhoneNumber = PhoneNumber;
+  r.IsInactive = false;
+  Readers.append(r);
+  CardToReaderIdx[CardNumber] = Readers.size() - 1;
+
+  return saveToXlsx();
+}
+
+ErrorOr<void> LibrarySystem::updateReader(int ID, const QString &Name,
+                                          const QString &CardNumber,
+                                          const QString &PhoneNumber) {
+  int idx = -1;
+  for (int i = 0; i < Readers.size(); ++i) {
+    if (Readers[i].ID == ID) {
+      idx = i;
+      break;
     }
   }
-  return QString::number(NewID);
+  if (idx < 0)
+    return {ErrorCode::NotFound, "读者不存在"};
+
+  // 卡号唯一性检查（排除自身）
+  if (CardToReaderIdx.contains(CardNumber) &&
+      CardToReaderIdx[CardNumber] != idx)
+    return {ErrorCode::ValidationError, "卡号已被其他读者使用: " + CardNumber};
+
+  // 更新卡号索引
+  QString oldCard = Readers[idx].CardNumber;
+  CardToReaderIdx.remove(oldCard);
+
+  Readers[idx].Name = Name;
+  Readers[idx].CardNumber = CardNumber;
+  Readers[idx].PhoneNumber = PhoneNumber;
+  CardToReaderIdx[CardNumber] = idx;
+
+  return saveToXlsx();
 }
+
+// ========== 催还查询 ==========
 
 ErrorOr<QVector<LibrarySystem::ReaderBorrowInfo>>
 LibrarySystem::getRemindBorrowings(int Days) {
-  QMap<int, ReaderBorrowInfo> ReaderMap;
+  QMap<int, ReaderBorrowInfo> readerMap;
+  QDate today = QDate::currentDate();
+  QDate deadline = today.addDays(Days);
 
-  QSqlQuery Query(DB);
+  for (const auto &br : std::as_const(Borrows)) {
+    if (br.ReturnDate.isValid())
+      continue;
 
-  // 查询所有未归还的借书记录，按到期日期排序
-  QString Sql =
-      "SELECT "
-      "br.id, br.reader_id, br.borrow_date, br.due_date, "               // br (0-3)
-      "bc.id, bc.barcode, bc.info_id, bc.status, "                       // bc (4-7)
-      "bi.id, bi.title, bi.author, bi.publisher, bi.cover_path, "        // bi (8-12)
-      "r.id, r.name, r.card_number, r.phone "                            // r  (13-16)
-      "FROM borrow_record br "
-      "JOIN bookcopy bc ON br.copy_id = bc.id "
-      "JOIN bookinfo bi ON bc.info_id = bi.id "
-      "JOIN reader r ON br.reader_id = r.id "
-      "WHERE br.return_date IS NULL "
-      "ORDER BY br.due_date ASC";
+    // 查找 Copy 和 Info
+    const BookCopy *copy = nullptr;
+    for (const auto &c : std::as_const(Copies)) {
+      if (c.ID == br.CopyId) {
+        copy = &c;
+        break;
+      }
+    }
+    if (!copy)
+      continue;
+    const BookInfo *info = nullptr;
+    for (const auto &inf : std::as_const(Infos)) {
+      if (inf.ID == copy->InfoID) {
+        info = &inf;
+        break;
+      }
+    }
+    if (!info)
+      continue;
 
-  if (!Query.exec(Sql)) {
-    return {ErrorCode::DatabaseError,
-            "查询催还数据失败: " + Query.lastError().text()};
-  }
+    // 查找 Reader
+    const Reader *reader = nullptr;
+    for (const auto &r : std::as_const(Readers)) {
+      if (r.ID == br.ReaderId) {
+        reader = &r;
+        break;
+      }
+    }
+    if (!reader)
+      continue;
 
-  QDate Today = QDate::currentDate();
-  QDate Deadline = Today.addDays(Days);
-
-  while (Query.next()) {
-    BorrowDetailType Detail;
-    Reader Rdr;
-
-    Detail.Record.ID = Query.value(0).toInt();
-    Detail.Record.ReaderId = Query.value(1).toInt();
-    Detail.Record.BorrowDate = Query.value(2).toDateTime();
-    Detail.Record.DueDate = Query.value(3).toDateTime();
-
-    Detail.Copy.ID = Query.value(4).toInt();
-    Detail.Copy.Barcode = Query.value(5).toString();
-    Detail.Copy.InfoID = Query.value(6).toInt();
-    Detail.Copy.Status = static_cast<BookCopy::BookStatus>(Query.value(7).toInt());
-    Detail.Record.CopyId = Detail.Copy.ID;
-
-    Detail.Info.ID = Query.value(8).toInt();
-    Detail.Info.Title = Query.value(9).toString();
-    Detail.Info.Author = Query.value(10).toString();
-    Detail.Info.Publisher = Query.value(11).toString();
-    Detail.Info.CoverPath = Query.value(12).toString();
-
-    Rdr.ID = Query.value(13).toInt();
-    Rdr.Name = Query.value(14).toString();
-    Rdr.CardNumber = Query.value(15).toString();
-    Rdr.PhoneNumber = Query.value(16).toString();
-
-    int ReaderId = Rdr.ID;
-    if (!ReaderMap.contains(ReaderId)) {
-      ReaderBorrowInfo Info;
-      Info.reader = Rdr;
-      ReaderMap[ReaderId] = Info;
+    if (!readerMap.contains(reader->ID)) {
+      ReaderBorrowInfo rbi;
+      rbi.reader = *reader;
+      readerMap[reader->ID] = rbi;
     }
 
-    QDate DueDate = Detail.Record.DueDate.date();
-    // 判断是否紧急（到期日期 <= Deadline 即为紧急，包括已逾期）
-    if (DueDate <= Deadline) {
-      ReaderMap[ReaderId].urgentBooks.append(Detail);
-    } else {
-      ReaderMap[ReaderId].otherBooks.append(Detail);
-    }
+    BorrowDetailType detail;
+    detail.Record = br;
+    detail.Copy = *copy;
+    detail.Info = *info;
+
+    QDate dueDate = br.DueDate.date();
+    if (dueDate <= deadline)
+      readerMap[reader->ID].urgentBooks.append(detail);
+    else
+      readerMap[reader->ID].otherBooks.append(detail);
   }
 
-  // 只返回有紧急借书的读者
-  QVector<ReaderBorrowInfo> Results;
-  for (auto &Info : ReaderMap) {
-    if (!Info.urgentBooks.isEmpty()) {
-      Results.append(Info);
-    }
+  QVector<ReaderBorrowInfo> results;
+  for (auto &info : readerMap) {
+    if (!info.urgentBooks.isEmpty())
+      results.append(info);
   }
-
-  return Results;
+  return results;
 }
 
-ErrorOr<void> LibrarySystem::modifyBookStatusByBarcode(const QString &Barcode, int NewStatus) {
-  QSqlQuery Query(DB);
-
-  // 查询书籍当前状态
-  Query.prepare("SELECT id, status FROM bookcopy WHERE barcode = :barcode");
-  Query.bindValue(":barcode", Barcode);
-  if (!Query.exec())
-    return {ErrorCode::DatabaseError, "查询失败: " + Query.lastError().text()};
-  if (!Query.next())
-    return {ErrorCode::NotFound, "条码不存在: " + Barcode};
-
-  int CopyId = Query.value(0).toInt();
-  int CurrentStatus = Query.value(1).toInt();
-
-  // 如果状态相同，无需修改
-  if (CurrentStatus == NewStatus)
-    return {ErrorCode::InvalidStatus, "书籍已处于该状态"};
-
-  // 验证状态转换
-  bool NeedCloseBorrow = false;
-  bool ValidTransition = false;
-
-  if (NewStatus == BookCopy::BS_Lost || NewStatus == BookCopy::BS_NonLendable) {
-    // 从"在馆"或"借出"改为"遗失"或"非外借书"
-    if (CurrentStatus == BookCopy::BS_InLibrary ||
-        CurrentStatus == BookCopy::BS_Borrowed) {
-      ValidTransition = true;
-      NeedCloseBorrow = (CurrentStatus == BookCopy::BS_Borrowed);
-    }
-  } else if (NewStatus == BookCopy::BS_InLibrary) {
-    // 从"遗失"或"非外借书"恢复为"在馆"
-    if (CurrentStatus == BookCopy::BS_Lost ||
-        CurrentStatus == BookCopy::BS_NonLendable) {
-      ValidTransition = true;
-    }
-  }
-
-  if (!ValidTransition)
-    return {ErrorCode::InvalidStatus, "不支持该状态转换"};
-
-  if (!DB.transaction())
-    return {ErrorCode::DatabaseError, "事务启动失败: " + DB.lastError().text()};
-
-  // 更新书籍状态
-  Query.prepare("UPDATE bookcopy SET status = :status WHERE id = :id");
-  Query.bindValue(":status", NewStatus);
-  Query.bindValue(":id", CopyId);
-  if (!Query.exec()) {
-    DB.rollback();
-    return {ErrorCode::DatabaseError, "更新状态失败: " + Query.lastError().text()};
-  }
-
-  // 如果之前是"借出"状态，需要关闭借阅记录
-  if (NeedCloseBorrow) {
-    Query.prepare(
-        "UPDATE borrow_record SET return_date = date('now') "
-        "WHERE copy_id = :cid AND return_date IS NULL");
-    Query.bindValue(":cid", CopyId);
-    if (!Query.exec()) {
-      DB.rollback();
-      return {ErrorCode::DatabaseError,
-              "关闭借阅记录失败: " + Query.lastError().text()};
-    }
-  }
-
-  if (DB.commit())
-    return {};
-  DB.rollback();
-  return {ErrorCode::DatabaseError, "提交失败: " + DB.lastError().text()};
-}

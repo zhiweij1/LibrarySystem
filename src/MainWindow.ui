@@ -109,19 +109,6 @@
         </spacer>
        </item>
        <item>
-        <widget class="QPushButton" name="EditBookButton">
-         <property name="minimumSize">
-          <size>
-           <width>120</width>
-           <height>100</height>
-          </size>
-         </property>
-         <property name="text">
-          <string>图书修改</string>
-         </property>
-        </widget>
-       </item>
-       <item>
         <widget class="QPushButton" name="EditReaderButton">
          <property name="minimumSize">
           <size>

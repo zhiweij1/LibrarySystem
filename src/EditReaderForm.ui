@@ -44,7 +44,7 @@
    <item>
     <layout class="QHBoxLayout" name="horizontalLayout_7">
      <item>
-      <widget class="QTableView" name="ReaderTableView">
+      <widget class="QTableWidget" name="ReaderTableWidget">
        <property name="minimumSize">
         <size>
          <width>900</width>
@@ -163,36 +163,6 @@
             </layout>
            </item>
            <item>
-            <layout class="QHBoxLayout" name="horizontalLayout_3">
-             <item>
-              <widget class="QLabel" name="label_5">
-               <property name="minimumSize">
-                <size>
-                 <width>0</width>
-                 <height>40</height>
-                </size>
-               </property>
-               <property name="text">
-                <string>读者状态：</string>
-               </property>
-              </widget>
-             </item>
-             <item>
-              <widget class="QLabel" name="StatusLabel">
-               <property name="minimumSize">
-                <size>
-                 <width>0</width>
-                 <height>40</height>
-                </size>
-               </property>
-               <property name="text">
-                <string>正常</string>
-               </property>
-              </widget>
-             </item>
-            </layout>
-           </item>
-           <item>
             <layout class="QHBoxLayout" name="horizontalLayout_2">
              <item>
               <widget class="QPushButton" name="SaveButton">
@@ -204,19 +174,6 @@
                </property>
                <property name="text">
                 <string>保存</string>
-               </property>
-              </widget>
-             </item>
-             <item>
-              <widget class="QPushButton" name="DeactivateButton">
-               <property name="minimumSize">
-                <size>
-                 <width>0</width>
-                 <height>40</height>
-                </size>
-               </property>
-               <property name="text">
-                <string>注销</string>
                </property>
               </widget>
              </item>

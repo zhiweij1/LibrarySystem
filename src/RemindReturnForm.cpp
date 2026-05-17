@@ -2,16 +2,9 @@
 #include "CoverPreview.h"
 #include "ui_RemindReturnForm.h"
 
-#include "Library.h"
-
-#include <QCoreApplication>
-#include <QDate>
 #include <QFrame>
 #include <QLabel>
 #include <QMessageBox>
-#include <QPixmap>
-#include <QPushButton>
-#include <QScrollArea>
 #include <QVBoxLayout>
 #include <QToolButton>
 

@@ -10,11 +10,14 @@ set(CMAKE_AUTORCC ON)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets Sql Test)
+find_package(Qt6 REQUIRED COMPONENTS Widgets GuiPrivate)
+
+# QXlsx - MIT licensed Excel read/write library for Qt
+add_subdirectory("${CMAKE_SOURCE_DIR}/third_party/QXlsx/QXlsx"
+                 "${CMAKE_BINARY_DIR}/QXlsx"
+                 EXCLUDE_FROM_ALL)
 
 set(CORE_SOURCES
-    src/TSVParser.h
-    src/TSVParser.cpp
     src/Library.h
     src/Library.cpp
 )
@@ -28,21 +31,18 @@ set(UI_SOURCES
     src/BorrowBookForm.h
     src/BorrowBookForm.cpp
     src/BorrowBookForm.ui
-    src/EditBookForm.h
-    src/EditBookForm.cpp
-    src/EditBookForm.ui
     src/ReturnBookForm.h
     src/ReturnBookForm.cpp
     src/ReturnBookForm.ui
-    src/EditReaderForm.h
-    src/EditReaderForm.cpp
-    src/EditReaderForm.ui
     src/QueryBookForm.h
     src/QueryBookForm.cpp
     src/QueryBookForm.ui
     src/RemindReturnForm.h
     src/RemindReturnForm.cpp
     src/RemindReturnForm.ui
+    src/EditReaderForm.h
+    src/EditReaderForm.cpp
+    src/EditReaderForm.ui
     src/resources.qrc
 )
 
@@ -74,23 +74,8 @@ qt_add_executable(LibrarySystem ${CORE_SOURCES} ${UI_SOURCES})
 
 target_link_libraries(LibrarySystem PRIVATE
     Qt6::Widgets
-    Qt6::Sql
+    QXlsx::QXlsx
 )
-
-enable_testing()
-
-add_executable(LibraryTests
-    test/test_main.cpp
-    ${CORE_SOURCES}
-)
-
-target_link_libraries(LibraryTests PRIVATE
-    Qt6::Test
-    Qt6::Sql
-    Qt6::Widgets
-)
-
-add_test(NAME AllLogicTests COMMAND LibraryTests)
 
 set_target_properties(LibrarySystem PROPERTIES
     WIN32_EXECUTABLE TRUE

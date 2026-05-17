@@ -1,11 +1,6 @@
 #include "MainWindow.h"
 #include "ui_MainWindow.h"
 
-#include "BorrowBookForm.h"
-#include "EditBookForm.h"
-#include "EditReaderForm.h"
-#include "ReturnBookForm.h"
-
 #include <QMessageBox>
 
 MainWindow::MainWindow(QWidget *Parent)
@@ -20,8 +15,6 @@ MainWindow::MainWindow(QWidget *Parent)
           &MainWindow::handleBookStatusQueryButtonClicked);
   connect(UI->RemindReturnButton, &QPushButton::clicked, this,
           &MainWindow::handleRemindReturnButtonClicked);
-  connect(UI->EditBookButton, &QPushButton::clicked, this,
-          &MainWindow::handleEditBookButtonClicked);
   connect(UI->EditReaderButton, &QPushButton::clicked, this,
           &MainWindow::handleEditReaderButtonClicked);
   connect(UI->AboutAction, &QAction::triggered, this,
@@ -29,17 +22,15 @@ MainWindow::MainWindow(QWidget *Parent)
 
   BorrowPage = new BorrowBookForm(this);
   ReturnPage = new ReturnBookForm(this);
-  EditBookPage = new EditBookForm(this);
-  EditReaderPage = new EditReaderForm(this);
   QueryBookPage = new QueryBookForm(this);
   RemindReturnPage = new RemindReturnForm(this);
+  EditReaderPage = new EditReaderForm(this);
 
   UI->stackedWidget->addWidget(BorrowPage);      // 索引 0
   UI->stackedWidget->addWidget(ReturnPage);      // 索引 1
   UI->stackedWidget->addWidget(QueryBookPage);   // 索引 2
   UI->stackedWidget->addWidget(RemindReturnPage);// 索引 3
-  UI->stackedWidget->addWidget(EditBookPage);    // 索引 4
-  UI->stackedWidget->addWidget(EditReaderPage);  // 索引 5
+  UI->stackedWidget->addWidget(EditReaderPage);  // 索引 4
 
   UI->stackedWidget->setCurrentWidget(BorrowPage);
   changeTheme(Theme::purple, UI->BorrowBookButton);
@@ -87,7 +78,6 @@ void MainWindow::cleanTheme() {
   UI->ReturnBookButton->setStyleSheet(SidebarBtnBase);
   UI->BookStatusQueryButton->setStyleSheet(SidebarBtnBase);
   UI->RemindReturnButton->setStyleSheet(SidebarBtnBase);
-  UI->EditBookButton->setStyleSheet(SidebarBtnBase);
   UI->EditReaderButton->setStyleSheet(SidebarBtnBase);
 
   UI->ContentFrame->setStyleSheet("");
@@ -131,13 +121,7 @@ void MainWindow::handleRemindReturnButtonClicked() {
   changeTheme(Theme::blue, UI->RemindReturnButton);
 }
 
-void MainWindow::handleEditBookButtonClicked() {
-  UI->stackedWidget->setCurrentWidget(EditBookPage);
-  changeTheme(Theme::orange, UI->EditBookButton);
-}
-
 void MainWindow::handleEditReaderButtonClicked() {
   UI->stackedWidget->setCurrentWidget(EditReaderPage);
   changeTheme(Theme::red, UI->EditReaderButton);
 }
-

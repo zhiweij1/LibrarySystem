@@ -1,8 +1,8 @@
 #ifndef EDITREADERFORM_H
 #define EDITREADERFORM_H
 
-#include <QDataWidgetMapper>
-#include <QSqlTableModel>
+#include "Library.h"
+
 #include <QTimer>
 #include <QWidget>
 
@@ -19,15 +19,13 @@ public:
 
 private:
   void performSearch();
+  void refreshTable();
   void handleAddButtonClicked();
   void handleSaveButtonClicked();
-  void handleDeactivateButtonClicked();
-  void refreshStatusDisplay();
 
   Ui::EditReaderForm *UI;
-  QSqlTableModel *Model;
-  QDataWidgetMapper *Mapper;
-
+  QVector<Reader> AllReaders;
+  int CurrentReaderID = -1;
   QTimer *SearchTimer;
 };
 

@@ -4,7 +4,6 @@
 
 #include "Library.h"
 
-#include <QButtonGroup>
 #include <QCheckBox>
 #include <QMessageBox>
 #include <QVBoxLayout>
