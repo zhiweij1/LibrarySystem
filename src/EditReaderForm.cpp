@@ -1,199 +1,139 @@
 #include "EditReaderForm.h"
 #include "ui_EditReaderForm.h"
 
-#include "Library.h"
-
+#include <QHeaderView>
 #include <QMessageBox>
-#include <QSqlError>
 
 EditReaderForm::EditReaderForm(QWidget *Parent)
     : QWidget(Parent), UI(new Ui::EditReaderForm) {
   UI->setupUi(this);
 
   SearchTimer = new QTimer(this);
-  SearchTimer->setSingleShot(true); // 设置为单次触发
-
-  // 连接信号：计时器结束时执行搜索
+  SearchTimer->setSingleShot(true);
   connect(SearchTimer, &QTimer::timeout, this, &EditReaderForm::performSearch);
 
-  // 原有的 textChanged 信号改为触发计时器逻辑
-  connect(UI->ReaderSearchLineEdit, &QLineEdit::textChanged, this, [this]() {
-    if (UI->ReaderSearchLineEdit->text().isEmpty()) {
-      SearchTimer->stop();   // 如果清空了输入框，直接停掉计时器
-      performSearch();       // 立即清空表格
-    } else {
-      SearchTimer->start(200); // 否则启动/重置计时器
-    }
-  });
-
+  connect(UI->ReaderSearchLineEdit, &QLineEdit::textChanged, this,
+          [this]() { SearchTimer->start(200); });
   connect(UI->AddButton, &QPushButton::clicked, this,
           &EditReaderForm::handleAddButtonClicked);
   connect(UI->SaveButton, &QPushButton::clicked, this,
           &EditReaderForm::handleSaveButtonClicked);
-  connect(UI->DeactivateButton, &QPushButton::clicked, this,
-          &EditReaderForm::handleDeactivateButtonClicked);
 
-  Model = new QSqlTableModel(this);
-  Model->setTable("reader");
-  Model->setEditStrategy(QSqlTableModel::OnManualSubmit);
-  Model->select();
+  connect(UI->ReaderTableWidget, &QTableWidget::cellClicked, this,
+          [this](int Row) {
+            CurrentReaderID =
+                UI->ReaderTableWidget->item(Row, 0)->data(Qt::UserRole).toInt();
+            UI->NameLineEdit->setText(
+                UI->ReaderTableWidget->item(Row, 1)->text());
+            UI->IDLineEdit->setText(
+                UI->ReaderTableWidget->item(Row, 2)->text());
+            UI->PhoneLineEdit->setText(
+                UI->ReaderTableWidget->item(Row, 3)->text());
+            UI->groupBox->setEnabled(true);
+          });
 
-  UI->ReaderTableView->setModel(Model);
-  UI->ReaderTableView->setSelectionBehavior(QAbstractItemView::SelectRows);
-  UI->ReaderTableView->setEditTriggers(QAbstractItemView::NoEditTriggers);
-  UI->ReaderTableView->setColumnHidden(0, true);  // 隐藏 ID
-  UI->ReaderTableView->setColumnHidden(1, false); // 显示姓名
-  UI->ReaderTableView->setColumnHidden(2, false); // 显示卡号
-  UI->ReaderTableView->setColumnHidden(3, false); // 显示电话
-  UI->ReaderTableView->setColumnHidden(4, true);  // 隐藏状态
-  UI->ReaderTableView->verticalHeader()->setVisible(false);
-  Model->setHeaderData(1, Qt::Horizontal, "姓名");
-  Model->setHeaderData(2, Qt::Horizontal, "卡号");
-  Model->setHeaderData(3, Qt::Horizontal, "联系电话");
-
-  UI->ReaderTableView->horizontalHeader()->setSectionResizeMode(
+  UI->ReaderTableWidget->setColumnCount(4);
+  UI->ReaderTableWidget->setHorizontalHeaderLabels(
+      {"ID", "姓名", "卡号", "电话"});
+  UI->ReaderTableWidget->setColumnHidden(0, true);
+  UI->ReaderTableWidget->setSelectionBehavior(QAbstractItemView::SelectRows);
+  UI->ReaderTableWidget->setEditTriggers(QAbstractItemView::NoEditTriggers);
+  UI->ReaderTableWidget->verticalHeader()->setVisible(false);
+  UI->ReaderTableWidget->horizontalHeader()->setSectionResizeMode(
       QHeaderView::Stretch);
-
-  Mapper = new QDataWidgetMapper(this);
-  Mapper->setModel(Model);
-  Mapper->addMapping(UI->NameLineEdit, 1);
-  Mapper->addMapping(UI->IDLineEdit, 2);
-  Mapper->addMapping(UI->PhoneLineEdit, 3);
-
-  connect(
-      UI->ReaderTableView->selectionModel(),
-      &QItemSelectionModel::selectionChanged,
-      [this](const QItemSelection &, const QItemSelection &) {
-        bool HasSelection =
-            !UI->ReaderTableView->selectionModel()->selectedIndexes().isEmpty();
-
-        UI->groupBox->setEnabled(HasSelection);
-
-        if (HasSelection) {
-          QModelIndex Index =
-              UI->ReaderTableView->selectionModel()->currentIndex();
-          Mapper->setCurrentModelIndex(Index);
-          refreshStatusDisplay();
-        } else {
-          UI->NameLineEdit->clear();
-          UI->IDLineEdit->clear();
-          UI->PhoneLineEdit->clear();
-          UI->StatusLabel->setText("未选择");
-        }
-      });
-
   UI->groupBox->setEnabled(false);
-  UI->StatusLabel->setText("未选择");
+
+  refreshTable();
 }
 
 EditReaderForm::~EditReaderForm() { delete UI; }
 
-void EditReaderForm::performSearch() {
-  const QString Text = UI->ReaderSearchLineEdit->text();
-  // 转义 SQL 特殊字符（顺序重要：先转义反斜杠本身）
-  QString Escaped = Text;
-  Escaped.replace("'", "''");
-  Escaped.replace("\\", "\\\\");
-  Escaped.replace("%", "\\%");
-  Escaped.replace("_", "\\_");
-  QString Filter = QString("(name LIKE '%%1%' ESCAPE '\\') OR (card_number LIKE '%%1%' ESCAPE '\\') OR "
-                           "(phone LIKE '%%1%' ESCAPE '\\')")
-                       .arg(Escaped);
-  Model->setFilter(Filter);
-  Model->select();
+void EditReaderForm::refreshTable() {
+  auto res = LibrarySystem::getInstance().getAllReaders();
+  if (!res)
+    return;
+  AllReaders = res.getValue();
+
+  QString search = UI->ReaderSearchLineEdit->text().trimmed();
+  QVector<Reader> filtered;
+  if (search.isEmpty()) {
+    filtered = AllReaders;
+  } else {
+    for (const auto &r : std::as_const(AllReaders)) {
+      if (r.Name.contains(search, Qt::CaseInsensitive) ||
+          r.CardNumber.contains(search, Qt::CaseInsensitive) ||
+          r.PhoneNumber.contains(search, Qt::CaseInsensitive))
+        filtered.append(r);
+    }
+  }
+
+  UI->ReaderTableWidget->setRowCount(0);
+  for (const auto &r : std::as_const(filtered)) {
+    int row = UI->ReaderTableWidget->rowCount();
+    UI->ReaderTableWidget->insertRow(row);
+    QTableWidgetItem *idItem =
+        new QTableWidgetItem(QString::number(r.ID));
+    idItem->setData(Qt::UserRole, r.ID);
+    UI->ReaderTableWidget->setItem(row, 0, idItem);
+    UI->ReaderTableWidget->setItem(row, 1, new QTableWidgetItem(r.Name));
+    UI->ReaderTableWidget->setItem(row, 2, new QTableWidgetItem(r.CardNumber));
+    UI->ReaderTableWidget->setItem(row, 3, new QTableWidgetItem(r.PhoneNumber));
+  }
+
+  CurrentReaderID = -1;
+  UI->NameLineEdit->clear();
+  UI->IDLineEdit->clear();
+  UI->PhoneLineEdit->clear();
+  UI->groupBox->setEnabled(false);
 }
 
+void EditReaderForm::performSearch() { refreshTable(); }
+
 void EditReaderForm::handleAddButtonClicked() {
-  auto ErrOrID = LibrarySystem::getInstance().getNewReaderCardID();
-  if (!ErrOrID) {
-    QMessageBox::critical(this, "critical",
-                          "创建新读者号失败: " + ErrOrID.getErrMsg());
-    qCritical() << "创建新读者号失败: " + ErrOrID.getErrMsg();
+  auto cardRes = LibrarySystem::getInstance().getNewReaderCardID();
+  if (!cardRes) {
+    QMessageBox::critical(this, "错误",
+                          "生成读者编号失败: " + cardRes.getErrMsg());
     return;
   }
-  int Row = Model->rowCount();
-  Model->insertRow(Row);
-  Model->setData(Model->index(Row, 4), RS_Active);
-  Model->setData(Model->index(Row, 2), ErrOrID.getValue());
-  UI->ReaderTableView->selectRow(Row);
+  CurrentReaderID = -1;
+  UI->NameLineEdit->clear();
+  UI->IDLineEdit->setText(cardRes.getValue());
+  UI->PhoneLineEdit->clear();
+  UI->groupBox->setEnabled(true);
   UI->NameLineEdit->setFocus();
 }
 
 void EditReaderForm::handleSaveButtonClicked() {
-  if (UI->NameLineEdit->text().trimmed().isEmpty()) {
-    QMessageBox::warning(this, "warning", "读者姓名不能为空");
+  QString name = UI->NameLineEdit->text().trimmed();
+  QString cardNumber = UI->IDLineEdit->text().trimmed();
+  QString phone = UI->PhoneLineEdit->text().trimmed();
+
+  if (name.isEmpty()) {
+    QMessageBox::warning(this, "提示", "读者姓名不能为空");
+    return;
+  }
+  if (cardNumber.isEmpty()) {
+    QMessageBox::warning(this, "提示", "读者编号不能为空");
     return;
   }
 
-  QVariant CardID = Model->index(Mapper->currentIndex(), 2).data();
+  auto &lib = LibrarySystem::getInstance();
+  ErrorOr<void> res;
 
-  Mapper->submit();
-  if (Model->submitAll()) {
-    for (int Idx = 0; Idx < Model->rowCount(); ++Idx) {
-      if (Model->index(Idx, 2).data() == CardID) {
-        UI->ReaderTableView->selectRow(Idx);
-        break;
-      }
-    }
-    QMessageBox::information(this, "information", "读者信息已保存");
-    qInfo() << "读者信息已保存";
+  if (CurrentReaderID < 0) {
+    // 新增
+    res = lib.addReader(name, cardNumber, phone);
   } else {
-    QMessageBox::critical(this, "critical",
-                          "读者信息保存失败: " + Model->lastError().text());
-    qCritical() << "读者信息保存失败: " + Model->lastError().text();
-    Model->revertAll();
+    // 修改
+    res = lib.updateReader(CurrentReaderID, name, cardNumber, phone);
   }
-}
 
-void EditReaderForm::handleDeactivateButtonClicked() {
-  int Row = Mapper->currentIndex();
-  if (Row < 0)
-    return;
-
-  QVariant CardID = Model->index(Row, 2).data();
-
-  ReaderStatus IsActive =
-      static_cast<ReaderStatus>(Model->index(Row, 4).data().toInt());
-  Model->setData(Model->index(Row, 4),
-                 IsActive == RS_Active ? RS_InActive : RS_Active);
-
-  if (Model->submitAll()) {
-    refreshStatusDisplay();
-  } else {
-    QMessageBox::critical(this, "critical",
-                          "操作失败: " + Model->lastError().text());
-    qCritical() << "操作失败: " + Model->lastError().text();
-    Model->revertAll();
-  }
-  for (int Idx = 0; Idx < Model->rowCount(); ++Idx) {
-    if (Model->index(Idx, 2).data() == CardID) {
-      UI->ReaderTableView->selectRow(Idx);
-      break;
-    }
-  }
-}
-
-void EditReaderForm::refreshStatusDisplay() {
-  int Row = Mapper->currentIndex();
-  if (Row < 0)
-    return;
-
-  int RawStatus = Model->index(Row, 4).data().toInt();
-  if (RawStatus != RS_Active && RawStatus != RS_InActive) {
-    UI->StatusLabel->setText("未知状态");
-    UI->StatusLabel->setStyleSheet("background:transparent;color:gray;");
+  if (!res) {
+    QMessageBox::critical(this, "错误", "保存失败: " + res.getErrMsg());
     return;
   }
 
-  ReaderStatus IsActive =
-      static_cast<ReaderStatus>(Model->index(Row, 4).data().toInt());
-  if (RS_Active == IsActive) {
-    UI->StatusLabel->setText("正常");
-    UI->StatusLabel->setStyleSheet("background:transparent;color:green;");
-    UI->DeactivateButton->setText("注销");
-  } else {
-    UI->StatusLabel->setText("已注销");
-    UI->StatusLabel->setStyleSheet("background:transparent;color:red;");
-    UI->DeactivateButton->setText("激活");
-  }
+  QMessageBox::information(this, "提示", "读者信息已保存");
+  refreshTable();
 }

@@ -2,7 +2,6 @@
 #define MAINWINDOW_H
 
 #include "BorrowBookForm.h"
-#include "EditBookForm.h"
 #include "EditReaderForm.h"
 #include "QueryBookForm.h"
 #include "RemindReturnForm.h"
@@ -30,7 +29,6 @@ private:
   void handleReturnBookButtonClicked();
   void handleBookStatusQueryButtonClicked();
   void handleRemindReturnButtonClicked();
-  void handleEditBookButtonClicked();
   void handleEditReaderButtonClicked();
   void handleAboutClicked();
 
@@ -38,10 +36,9 @@ private:
 
   BorrowBookForm *BorrowPage;
   ReturnBookForm *ReturnPage;
-  EditBookForm *EditBookPage;
-  EditReaderForm *EditReaderPage;
   QueryBookForm *QueryBookPage;
   RemindReturnForm *RemindReturnPage;
+  EditReaderForm *EditReaderPage;
 
   enum class Theme { red, orange, purple, green, brown, blue };
   const QMap<Theme, QString> ThemeMap = {

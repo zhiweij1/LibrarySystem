@@ -2,14 +2,14 @@
 #define LIBRARY_H
 
 #include <QDateTime>
+#include <QHash>
 #include <QObject>
-#include <QSqlDatabase>
-#include <QSqlQuery>
 #include <QString>
+#include <QVector>
 
 enum class ErrorCode {
   Success = 0,
-  DatabaseError,   // 数据库操作失败
+  DatabaseError,   // 数据操作失败
   NotFound,        // 条码、读者等不存在
   InvalidStatus,   // 书籍状态不支持该操作（如已借出不能再借）
   ValidationError, // 输入数据格式错误
@@ -94,16 +94,8 @@ struct BorrowDetailType {
   BookInfo Info;
 };
 
-enum ReaderStatus {
-  RS_Active = 0,
-  RS_InActive = 1,
-};
-
 class LibrarySystem : public QObject {
   Q_OBJECT
-
-signals:
-  void importProgress(int Current, int Total);
 
 public:
   static LibrarySystem &getInstance() {
@@ -114,13 +106,8 @@ public:
   LibrarySystem(const LibrarySystem &) = delete;
   LibrarySystem &operator=(const LibrarySystem &) = delete;
 
-  ErrorOr<void> init(const QString &DBPath = "library.db");
-  ErrorOr<bool> isBarcodeExists(const QString &Barcode);
-  ErrorOr<void> importFromTSV(const QString &FilePath);
+  ErrorOr<void> init(const QString &XlsxPath);
   ErrorOr<void> borrowBooks(int ReaderID, const QVector<int> &CopyIDs);
-  ErrorOr<void> returnBooks(const QList<int> &RecordIDs);
-  ErrorOr<void> renewBooks(const QList<int> &RecordIDs);
-  // 归还和续借在同一事务中执行，保证原子性
   ErrorOr<void> returnAndRenewBooks(const QList<int> &ReturnRecordIDs,
                                     const QList<int> &RenewRecordIDs);
   ErrorOr<std::pair<BookInfo, BookCopy>>
@@ -130,46 +117,59 @@ public:
   ErrorOr<QVector<std::pair<BorrowDetailType, Reader>>>
   queryBooks(const QString &Barcode, const QString &Title,
              const QString &Author, const QString &Publisher);
-  ErrorOr<QSet<QString>> checkExistingBarcodes(const QSet<QString> &Barcodes);
   ErrorOr<QString> getNewReaderCardID();
+  ErrorOr<QVector<Reader>> getAllReaders();
+  ErrorOr<void> addReader(const QString &Name, const QString &CardNumber,
+                          const QString &PhoneNumber);
+  ErrorOr<void> updateReader(int ID, const QString &Name,
+                             const QString &CardNumber,
+                             const QString &PhoneNumber);
 
-  // 通过条形码将图书标记为遗失
-  ErrorOr<void> modifyBookStatusByBarcode(const QString &Barcode, int NewStatus);
-
-  // 催还相关：获取近N天内到期的借书记录，按读者分组
   struct ReaderBorrowInfo {
     Reader reader;
-    QVector<BorrowDetailType> urgentBooks;   // 紧急（N天内到期）
-    QVector<BorrowDetailType> otherBooks;    // 其他借书
+    QVector<BorrowDetailType> urgentBooks;
+    QVector<BorrowDetailType> otherBooks;
   };
   ErrorOr<QVector<ReaderBorrowInfo>> getRemindBorrowings(int Days);
 
-  // 数据库路径
-  QString getDatabasePath() const { return DBPath; }
   QString getDataDir() const { return DataDir; }
-
-  // 备份数据库到指定路径（内部会短暂关闭再重新打开连接）。
-  // 注意：必须在程序启动阶段、任何 QSqlQueryModel/SqlTableModel 创建之前调用，
-  // 否则已有查询和模型会因连接断开而失效。如需运行时备份，应改用 SQLite 在线备份 API。
-  ErrorOr<void> backupDatabaseTo(const QString &BackupPath);
 
 private:
   LibrarySystem() = default;
-  ErrorOr<void> borrowBook(QSqlQuery &Query, const int ReaderID,
-                           const int CopyID);
-  ErrorOr<void> returnBook(QSqlQuery &Query, const int RecordID);
-  ErrorOr<void> renewBook(QSqlQuery &Query, const int RecordID);
 
-  void closeDatabase() { DB.close(); }
-  bool openDatabase() {
-    if (!DB.open()) return false;
-    QSqlQuery Pragma(DB);
-    return Pragma.exec("PRAGMA foreign_keys = ON;");
-  }
+  // ---- xlsx 文件操作 ----
+  ErrorOr<void> loadFromXlsx();
+  ErrorOr<void> saveToXlsx();
+  ErrorOr<void> lockXlsxFile(const QString &Path);
+  void unlockXlsxFile();
 
-  QSqlDatabase DB;
-  QString DBPath;   // 数据库文件路径
-  QString DataDir;  // 数据目录路径
+  // ---- 事务相关 private 方法（内存操作，不再需要 QSqlQuery） ----
+  ErrorOr<void> borrowBook(int ReaderID, int CopyID);
+  ErrorOr<void> returnBook(int RecordID);
+  ErrorOr<void> renewBook(int RecordID);
+
+  // ---- 内存数据存储 ----
+  QVector<BookInfo> Infos;
+  QVector<BookCopy> Copies;
+  QVector<Reader> Readers;
+  QVector<BorrowRecord> Borrows;
+
+  // 查找索引：条码 -> Copies 下标，卡号 -> Readers 下标
+  QHash<QString, int> BarcodeToCopyIdx;
+  QHash<QString, int> CardToReaderIdx;
+  QHash<QString, QString> BarcodeNotes; // 条码 -> 备注，保存时写回
+
+  int NextInfoID = 1;
+  int NextCopyID = 1;
+  int NextReaderID = 1;
+  int NextBorrowID = 1;
+
+  QString XlsxPath;
+  QString DataDir;
+
+#ifdef Q_OS_WIN
+  void *LockHandle = nullptr; // HANDLE
+#endif
 };
 
 #endif // LIBRARY_H

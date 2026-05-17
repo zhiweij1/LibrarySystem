@@ -2,9 +2,6 @@
 #include "CoverPreview.h"
 #include "ui_QueryBookForm.h"
 
-#include "Library.h"
-
-#include <QCoreApplication>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QHBoxLayout>
@@ -121,7 +118,7 @@ void QueryBookForm::initTable() {
   // 状态(5): 固定
   UI->ResultTableWidget->horizontalHeader()->setSectionResizeMode(
       5, QHeaderView::Fixed);
-  UI->ResultTableWidget->setColumnWidth(5, 100);
+  UI->ResultTableWidget->setColumnWidth(5, 150);
   // 借出日期(6): 固定
   UI->ResultTableWidget->horizontalHeader()->setSectionResizeMode(
       6, QHeaderView::Fixed);
