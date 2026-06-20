@@ -20,16 +20,17 @@ BorrowBookForm::BorrowBookForm(QWidget *Parent)
   connect(UI->BookNumLineEdit, &QLineEdit::returnPressed, this,
           &BorrowBookForm::handleBookAddButtonClicked);
 
-  UI->BookListTableWidget->setColumnCount(6);
+  UI->BookListTableWidget->setColumnCount(7);
   UI->BookListTableWidget->setHorizontalHeaderLabels(
-      {"封面", "条码号", "书名", "作者", "出版社", "操作"});
+      {"封面", "条码号", "书名", "作者", "出版社", "分类号", "操作"});
   UI->BookListTableWidget->setColumnWidth(0, 100); // 封面
   UI->BookListTableWidget->setColumnWidth(1, 200); // 条码号
   UI->BookListTableWidget->setColumnWidth(2, 200); // 书名
   UI->BookListTableWidget->setColumnWidth(3, 200); // 作者
   UI->BookListTableWidget->setColumnWidth(4, 200); // 出版社
+  UI->BookListTableWidget->setColumnWidth(5, 150); // 分类号
   UI->BookListTableWidget->horizontalHeader()->setSectionResizeMode(
-      5, QHeaderView::Stretch);
+      6, QHeaderView::Stretch);
   UI->BookListTableWidget->verticalHeader()->setDefaultSectionSize(100);
 }
 
@@ -91,6 +92,8 @@ void BorrowBookForm::handleBookAddButtonClicked() {
                                    new QTableWidgetItem(BookData.first.Author));
   UI->BookListTableWidget->setItem(
       Row, 4, new QTableWidgetItem(BookData.first.Publisher));
+  UI->BookListTableWidget->setItem(
+      Row, 5, new QTableWidgetItem(BookData.first.CLCID));
 
   // 添加删除按钮
   QPushButton *DelBtn = new QPushButton("删除");
@@ -100,12 +103,12 @@ void BorrowBookForm::handleBookAddButtonClicked() {
       "QPushButton:hover{background-color:#FFCDD2;border-color:#D32F2F;}"
       "QPushButton:pressed{background-color:#EF9A9A;border-color:#C62828;}"
       "QPushButton:disabled{color:#BDBDBD;background-color:#FFEBEE;border:1px solid #FFCDD2;}");
-  UI->BookListTableWidget->setCellWidget(Row, 5, DelBtn);
+  UI->BookListTableWidget->setCellWidget(Row, 6, DelBtn);
 
   // 绑定删除操作：通过遍历 cellWidget 找到按钮所在行
   connect(DelBtn, &QPushButton::clicked, [this, DelBtn]() {
     for (int Row = 0; Row < UI->BookListTableWidget->rowCount(); ++Row) {
-      if (UI->BookListTableWidget->cellWidget(Row, 5) == DelBtn) {
+      if (UI->BookListTableWidget->cellWidget(Row, 6) == DelBtn) {
         delete UI->BookListTableWidget->cellWidget(Row, 0);
         UI->BookListTableWidget->removeRow(Row);
         DelBtn->deleteLater();
@@ -170,9 +173,9 @@ void BorrowBookForm::handleSubmitButtonClicked() {
   Layout.addWidget(new QLabel("<b>确认书籍列表：</b>", &ConfirmDlg));
 
   QTableWidget ConfirmTable(&ConfirmDlg);
-  ConfirmTable.setColumnCount(5);
+  ConfirmTable.setColumnCount(6);
   ConfirmTable.setHorizontalHeaderLabels(
-      {"封面", "条码号", "书名", "作者", "出版社"});
+      {"封面", "条码号", "书名", "作者", "出版社", "分类号"});
   ConfirmTable.horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
   ConfirmTable.verticalHeader()->setDefaultSectionSize(100);
 
@@ -188,7 +191,7 @@ void BorrowBookForm::handleSubmitButtonClicked() {
       ConfirmTable.setCellWidget(Row, 0, NewImg);
     }
 
-    for (int Col = 1; Col < 5; ++Col) {
+    for (int Col = 1; Col < 6; ++Col) {
       if (auto *OldItem = UI->BookListTableWidget->item(Row, Col)) {
         // 只复制需要被显示的内容，data不需要复制
         ConfirmTable.setItem(Row, Col, new QTableWidgetItem(OldItem->text()));

@@ -61,6 +61,7 @@ struct BookInfo {
   QString Author;
   QString Publisher;
   QString CoverPath;
+  QString CLCID; // 分类号（中图法分类号等）
 };
 
 struct BookCopy {
