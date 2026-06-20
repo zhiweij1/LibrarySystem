@@ -39,7 +39,7 @@ void RemindReturnForm::loadData() {
 
   int UrgentCount = 0;
   for (const auto &Info : std::as_const(ReaderInfos)) {
-    UrgentCount += Info.urgentBooks.size();
+    UrgentCount += Info.UrgentBooks.size();
     QWidget *Card = createReaderCard(Info);
     UI->cardLayout->insertWidget(UI->cardLayout->count() - 1, Card);
   }
@@ -73,9 +73,9 @@ QWidget *RemindReturnForm::createReaderCard(const LibrarySystem::ReaderBorrowInf
   QHBoxLayout *HeaderLayout = new QHBoxLayout();
 
   QLabel *ReaderLabel = new QLabel(QString("卡号：%1，姓名：%2，电话：%3")
-                                       .arg(Info.reader.CardNumber)
-                                       .arg(Info.reader.Name)
-                                       .arg(Info.reader.PhoneNumber));
+                                       .arg(Info.Reader.CardNumber)
+                                       .arg(Info.Reader.Name)
+                                       .arg(Info.Reader.PhoneNumber));
   ReaderLabel->setStyleSheet("font-size: 12px;");
   HeaderLayout->addWidget(ReaderLabel);
 
@@ -92,17 +92,17 @@ QWidget *RemindReturnForm::createReaderCard(const LibrarySystem::ReaderBorrowInf
 
   // 紧急借书列表
   QDate Today = QDate::currentDate();
-  for (const auto &Book : Info.urgentBooks) {
+  for (const auto &Book : Info.UrgentBooks) {
     QWidget *BookWidget = createBookItem(Book, Today);
     CardLayout->addWidget(BookWidget);
   }
 
   // 其他借书（可折叠）
-  if (!Info.otherBooks.isEmpty()) {
+  if (!Info.OtherBooks.isEmpty()) {
     QHBoxLayout *ToggleLayout = new QHBoxLayout();
 
     QToolButton *ToggleBtn = new QToolButton();
-    ToggleBtn->setText(QString("▶ 其他借书（%1 本）").arg(Info.otherBooks.size()));
+    ToggleBtn->setText(QString("▶ 其他借书（%1 本）").arg(Info.OtherBooks.size()));
     ToggleBtn->setStyleSheet("QToolButton{background:transparent;border:none;color:#666;font-size:12px;}");
     ToggleBtn->setCheckable(true);
     ToggleLayout->addWidget(ToggleBtn);
@@ -114,7 +114,7 @@ QWidget *RemindReturnForm::createReaderCard(const LibrarySystem::ReaderBorrowInf
     QVBoxLayout *OtherBooksLayout = new QVBoxLayout(OtherBooksWidget);
     OtherBooksLayout->setContentsMargins(20, 0, 0, 0);
 
-    for (const auto &Book : Info.otherBooks) {
+    for (const auto &Book : Info.OtherBooks) {
       QWidget *BookWidget = createBookItem(Book, Today, true);
       OtherBooksLayout->addWidget(BookWidget);
     }
@@ -122,7 +122,7 @@ QWidget *RemindReturnForm::createReaderCard(const LibrarySystem::ReaderBorrowInf
     OtherBooksWidget->setVisible(false);
     CardLayout->addWidget(OtherBooksWidget);
 
-    int OtherBooksCount = Info.otherBooks.size();
+    int OtherBooksCount = Info.OtherBooks.size();
     connect(ToggleBtn, &QToolButton::toggled, this, [ToggleBtn, OtherBooksWidget, OtherBooksCount](bool Checked) {
       OtherBooksWidget->setVisible(Checked);
       ToggleBtn->setText(Checked
