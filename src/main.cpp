@@ -16,7 +16,8 @@ namespace {
 QFile *OutFilePtr = nullptr;
 void messageHandler(QtMsgType Type, const QMessageLogContext &Context,
                     const QString &Msg) {
-  if (!OutFilePtr) return;
+  if (!OutFilePtr)
+    return;
   QString Txt;
   QString Time = QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss");
 
@@ -71,7 +72,8 @@ int main(int argc, char *argv[]) {
   if (XlsxPath.isEmpty() || !QFile::exists(XlsxPath)) {
     XlsxPath = QFileDialog::getOpenFileName(
         nullptr, "选择数据文件",
-        XlsxPath.isEmpty() ? QDir::homePath() : QFileInfo(XlsxPath).absolutePath(),
+        XlsxPath.isEmpty() ? QDir::homePath()
+                           : QFileInfo(XlsxPath).absolutePath(),
         "Excel 文件 (*.xlsx)");
     if (XlsxPath.isEmpty()) {
       delete OutFile;
@@ -81,14 +83,15 @@ int main(int argc, char *argv[]) {
   }
 
   if (!LibrarySystem::getInstance().init(XlsxPath)) {
-    QMessageBox::critical(nullptr, "", "错误：无法打开数据文件，程序将退出。\n路径: " + XlsxPath);
+    QMessageBox::critical(
+        nullptr, "", "错误：无法打开数据文件，程序将退出。\n路径: " + XlsxPath);
     exit(-2);
   }
 
   // 字体设置
   QFont Font;
-  QStringList PreferredFonts = {"Microsoft YaHei", "微软雅黑", "PingFang SC",
-                                "Noto Sans CJK SC", "SimHei", "黑体"};
+  QStringList PreferredFonts = {"Microsoft YaHei",  "微软雅黑", "PingFang SC",
+                                "Noto Sans CJK SC", "SimHei",   "黑体"};
   for (const auto &Family : PreferredFonts) {
     if (QFontDatabase::hasFamily(Family)) {
       Font.setFamily(Family);

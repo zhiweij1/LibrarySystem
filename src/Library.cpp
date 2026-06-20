@@ -61,7 +61,8 @@ ErrorOr<void> LibrarySystem::loadFromXlsx() {
   if (Sheets.isEmpty())
     return {ErrorCode::DatabaseError, "Excel 文件没有 Sheet"};
 
-  // ---- 主 Sheet（第一个 Sheet）：书名/作者/出版社/数量/封面图文件号/条形码/分类号/备注/状态 ----
+  // ---- 主 Sheet（第一个
+  // Sheet）：书名/作者/出版社/数量/封面图文件号/条形码/分类号/备注/状态 ----
   Xlsx.selectSheet(Sheets[0]);
   int RowCount = Xlsx.dimension().rowCount();
   int ColCount = Xlsx.dimension().columnCount();
@@ -176,9 +177,10 @@ ErrorOr<void> LibrarySystem::saveToXlsx() {
 
   QXlsx::Document Xlsx;
 
-  // ---- 主 Sheet：书名/作者/出版社/数量/封面图文件号/条形码/分类号/备注/状态 ----
-  QStringList Headers = {"书名", "作者", "出版社", "数量", "封面图文件号",
-                         "条形码", "分类号", "备注", "状态"};
+  // ---- 主 Sheet：书名/作者/出版社/数量/封面图文件号/条形码/分类号/备注/状态
+  // ----
+  QStringList Headers = {"书名",   "作者",   "出版社", "数量", "封面图文件号",
+                         "条形码", "分类号", "备注",   "状态"};
   for (int C = 0; C < Headers.size(); ++C)
     Xlsx.write(1, C + 1, Headers[C]);
 
@@ -204,10 +206,10 @@ ErrorOr<void> LibrarySystem::saveToXlsx() {
     Xlsx.write(Row, 1, Info->Title);
     Xlsx.write(Row, 2, Info->Author);
     Xlsx.write(Row, 3, Info->Publisher);
-    Xlsx.write(Row, 4, 1);                      // 数量
-    Xlsx.write(Row, 5, ImageNo);                // 封面图文件号
-    Xlsx.write(Row, 6, Copy.Barcode);           // 条形码
-    Xlsx.write(Row, 7, Info->CLCID);            // 分类号
+    Xlsx.write(Row, 4, 1);                                // 数量
+    Xlsx.write(Row, 5, ImageNo);                          // 封面图文件号
+    Xlsx.write(Row, 6, Copy.Barcode);                     // 条形码
+    Xlsx.write(Row, 7, Info->CLCID);                      // 分类号
     Xlsx.write(Row, 8, BarcodeNotes.value(Copy.Barcode)); // 备注
     Xlsx.write(Row, 9, static_cast<int>(Copy.Status));    // 状态
     ++Row;
@@ -229,8 +231,8 @@ ErrorOr<void> LibrarySystem::saveToXlsx() {
 
   // ---- _borrows Sheet ----
   Xlsx.addSheet("_borrows");
-  QStringList BHeaders = {"id", "读者卡号", "书籍条码", "借书日期",
-                          "应还日期", "归还日期"};
+  QStringList BHeaders = {"id",       "读者卡号", "书籍条码",
+                          "借书日期", "应还日期", "归还日期"};
   for (int C = 0; C < BHeaders.size(); ++C)
     Xlsx.write(1, C + 1, BHeaders[C]);
   int BRow = 2;
@@ -342,7 +344,8 @@ ErrorOr<void> LibrarySystem::borrowBook(int ReaderID, int CopyID) {
     }
   }
   if (CopyIdx < 0)
-    return {ErrorCode::NotFound, "未找到书籍副本，副本ID: " + QString::number(CopyID)};
+    return {ErrorCode::NotFound,
+            "未找到书籍副本，副本ID: " + QString::number(CopyID)};
 
   const BookCopy &Copy = Copies[CopyIdx];
   if (Copy.Status == BookCopy::BS_Borrowed)
@@ -401,11 +404,13 @@ ErrorOr<void> LibrarySystem::borrowBooks(int ReaderID,
 
     const BookCopy &Copy = Copies[CopyIdx];
     if (Copy.Status == BookCopy::BS_Borrowed)
-      return {ErrorCode::InvalidStatus, "该书籍目前处于'借出'状态，无法再次借出"};
+      return {ErrorCode::InvalidStatus,
+              "该书籍目前处于'借出'状态，无法再次借出"};
     if (Copy.Status == BookCopy::BS_Lost)
       return {ErrorCode::InvalidStatus, "该书籍目前处于'遗失'状态，无法借出"};
     if (Copy.Status == BookCopy::BS_NonLendable)
-      return {ErrorCode::InvalidStatus, "该书籍目前处于'非外借书'状态，无法借出"};
+      return {ErrorCode::InvalidStatus,
+              "该书籍目前处于'非外借书'状态，无法借出"};
   }
 
   // 全部预检通过后执行借书（此时不会再因状态问题失败）
@@ -429,7 +434,8 @@ ErrorOr<void> LibrarySystem::returnBook(int RecordID) {
     }
   }
   if (BrIdx < 0)
-    return {ErrorCode::NotFound, "未找到借阅记录，记录ID: " + QString::number(RecordID)};
+    return {ErrorCode::NotFound,
+            "未找到借阅记录，记录ID: " + QString::number(RecordID)};
 
   BorrowRecord &Br = Borrows[BrIdx];
   if (Br.ReturnDate.isValid())
@@ -448,7 +454,8 @@ ErrorOr<void> LibrarySystem::returnBook(int RecordID) {
 
   const BookCopy &Copy = Copies[CopyIdx];
   if (Copy.Status == BookCopy::BS_Lost)
-    return {ErrorCode::InvalidStatus, "该书籍处于'遗失'状态，请先办理挂失处理后再归还"};
+    return {ErrorCode::InvalidStatus,
+            "该书籍处于'遗失'状态，请先办理挂失处理后再归还"};
   if (Copy.Status == BookCopy::BS_NonLendable)
     return {ErrorCode::InvalidStatus, "该书籍处于'非外借书'状态，无法归还"};
 
@@ -468,7 +475,8 @@ ErrorOr<void> LibrarySystem::renewBook(int RecordID) {
     }
   }
   if (BrIdx < 0)
-    return {ErrorCode::NotFound, "未找到借阅记录，记录ID: " + QString::number(RecordID)};
+    return {ErrorCode::NotFound,
+            "未找到借阅记录，记录ID: " + QString::number(RecordID)};
 
   BorrowRecord &Br = Borrows[BrIdx];
   if (Br.ReturnDate.isValid())
@@ -626,7 +634,8 @@ LibrarySystem::queryBooks(const QString &Barcode, const QString &Title,
 
   for (const auto &Copy : std::as_const(Copies)) {
     // 模糊匹配
-    if (!Barcode.isEmpty() && !Copy.Barcode.contains(Barcode, Qt::CaseInsensitive))
+    if (!Barcode.isEmpty() &&
+        !Copy.Barcode.contains(Barcode, Qt::CaseInsensitive))
       continue;
 
     const BookInfo *Info = nullptr;
@@ -641,7 +650,8 @@ LibrarySystem::queryBooks(const QString &Barcode, const QString &Title,
 
     if (!Title.isEmpty() && !Info->Title.contains(Title, Qt::CaseInsensitive))
       continue;
-    if (!Author.isEmpty() && !Info->Author.contains(Author, Qt::CaseInsensitive))
+    if (!Author.isEmpty() &&
+        !Info->Author.contains(Author, Qt::CaseInsensitive))
       continue;
     if (!Publisher.isEmpty() &&
         !Info->Publisher.contains(Publisher, Qt::CaseInsensitive))
@@ -689,9 +699,7 @@ ErrorOr<QString> LibrarySystem::getNewReaderCardID() {
 
 // ========== 读者管理 ==========
 
-ErrorOr<QVector<Reader>> LibrarySystem::getAllReaders() {
-  return Readers;
-}
+ErrorOr<QVector<Reader>> LibrarySystem::getAllReaders() { return Readers; }
 
 ErrorOr<void> LibrarySystem::addReader(const QString &Name,
                                        const QString &CardNumber,
@@ -810,4 +818,3 @@ LibrarySystem::getRemindBorrowings(int Days) {
   }
   return Results;
 }
-

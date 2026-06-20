@@ -2,10 +2,10 @@
 #include "CoverPreview.h"
 #include "ui_QueryBookForm.h"
 
-#include <QMessageBox>
-#include <QPushButton>
 #include <QHBoxLayout>
 #include <QHeaderView>
+#include <QMessageBox>
+#include <QPushButton>
 
 QueryBookForm::QueryBookForm(QWidget *Parent)
     : QWidget(Parent), UI(new Ui::QueryBookForm) {
@@ -28,8 +28,9 @@ QueryBookForm::QueryBookForm(QWidget *Parent)
           &QueryBookForm::handleSearchButtonClicked);
   connect(UI->PublisherLineEdit, &QLineEdit::returnPressed, this,
           &QueryBookForm::handleSearchButtonClicked);
-  connect(UI->StatusFilterComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
-          this, &QueryBookForm::handleStatusFilterChanged);
+  connect(UI->StatusFilterComboBox,
+          QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+          &QueryBookForm::handleStatusFilterChanged);
   connect(UI->ResultTableWidget, &QTableWidget::cellClicked, this,
           &QueryBookForm::handleCellClicked);
   connect(UI->PrevPageButton, &QPushButton::clicked, this,
@@ -89,7 +90,8 @@ void QueryBookForm::initTable() {
   // 设置列数和表头标签
   UI->ResultTableWidget->setColumnCount(9);
   UI->ResultTableWidget->setHorizontalHeaderLabels(
-      {"封面", "条码", "书名", "作者", "出版社", "分类号", "状态", "借出日期", "预计归还日期"});
+      {"封面", "条码", "书名", "作者", "出版社", "分类号", "状态", "借出日期",
+       "预计归还日期"});
 
   UI->ResultTableWidget->setEditTriggers(QAbstractItemView::NoEditTriggers);
   UI->ResultTableWidget->setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -161,8 +163,8 @@ void QueryBookForm::updateTable() {
         Row, 3, new QTableWidgetItem(Item.first.Info.Author));
     UI->ResultTableWidget->setItem(
         Row, 4, new QTableWidgetItem(Item.first.Info.Publisher));
-    UI->ResultTableWidget->setItem(
-        Row, 5, new QTableWidgetItem(Item.first.Info.CLCID));
+    UI->ResultTableWidget->setItem(Row, 5,
+                                   new QTableWidgetItem(Item.first.Info.CLCID));
 
     // 状态列使用按钮
     QWidget *StatusWidget = new QWidget();
@@ -173,11 +175,13 @@ void QueryBookForm::updateTable() {
 
     if (Item.first.Copy.Status == BookCopy::BookStatus::BS_InLibrary) {
       StatusBtn->setText("在馆");
-      StatusBtn->setStyleSheet("color: white; background-color: #4CAF50; border-radius: 4px;");
+      StatusBtn->setStyleSheet(
+          "color: white; background-color: #4CAF50; border-radius: 4px;");
       StatusBtn->setEnabled(false);
     } else if (Item.first.Copy.Status == BookCopy::BookStatus::BS_Borrowed) {
       StatusBtn->setText("借出");
-      StatusBtn->setStyleSheet("color: black; background-color: #FFC107; border-radius: 4px;");
+      StatusBtn->setStyleSheet(
+          "color: black; background-color: #FFC107; border-radius: 4px;");
       StatusBtn->setProperty("readerName", Item.second.Name);
       StatusBtn->setProperty("readerCard", Item.second.CardNumber);
       StatusBtn->setProperty("readerPhone", Item.second.PhoneNumber);
@@ -190,15 +194,18 @@ void QueryBookForm::updateTable() {
       });
     } else if (Item.first.Copy.Status == BookCopy::BookStatus::BS_Lost) {
       StatusBtn->setText("遗失");
-      StatusBtn->setStyleSheet("color: white; background-color: #F44336; border-radius: 4px;");
+      StatusBtn->setStyleSheet(
+          "color: white; background-color: #F44336; border-radius: 4px;");
       StatusBtn->setEnabled(false);
     } else if (Item.first.Copy.Status == BookCopy::BookStatus::BS_NonLendable) {
       StatusBtn->setText("非外借书");
-      StatusBtn->setStyleSheet("color: white; background-color: #2196F3; border-radius: 4px;");
+      StatusBtn->setStyleSheet(
+          "color: white; background-color: #2196F3; border-radius: 4px;");
       StatusBtn->setEnabled(false);
     } else {
       StatusBtn->setText("未知");
-      StatusBtn->setStyleSheet("color: white; background-color: #9E9E9E; border-radius: 4px;");
+      StatusBtn->setStyleSheet(
+          "color: white; background-color: #9E9E9E; border-radius: 4px;");
       StatusBtn->setEnabled(false);
     }
 
@@ -223,14 +230,13 @@ void QueryBookForm::updateTable() {
 
 void QueryBookForm::updatePageInfo() {
   int TotalPages = qMax(1, (FilteredResults.size() + PageSize - 1) / PageSize);
-  UI->PageInfoLabel->setText(QString("第 %1 页 / 共 %2 页").arg(CurrentPage).arg(TotalPages));
+  UI->PageInfoLabel->setText(
+      QString("第 %1 页 / 共 %2 页").arg(CurrentPage).arg(TotalPages));
   UI->PrevPageButton->setEnabled(CurrentPage > 1);
   UI->NextPageButton->setEnabled(CurrentPage < TotalPages);
 }
 
-void QueryBookForm::handleSearchButtonClicked() {
-  loadData();
-}
+void QueryBookForm::handleSearchButtonClicked() { loadData(); }
 
 void QueryBookForm::handleCellClicked(int Row, int Column) {
   Q_UNUSED(Row);

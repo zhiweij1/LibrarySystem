@@ -1,10 +1,10 @@
 #ifndef REMINDRETURNFORM_H
 #define REMINDRETURNFORM_H
 
-#include <QDate>
-#include <QWidget>
-#include <QVector>
 #include "Library.h"
+#include <QDate>
+#include <QVector>
+#include <QWidget>
 
 namespace Ui {
 class RemindReturnForm;
@@ -24,7 +24,8 @@ private:
   void loadData();
   void clearCards();
   QWidget *createReaderCard(const LibrarySystem::ReaderBorrowInfo &Info);
-  QWidget *createBookItem(const BorrowDetailType &Book, const QDate &Today, bool IsOther = false);
+  QWidget *createBookItem(const BorrowDetailType &Book, const QDate &Today,
+                          bool IsOther = false);
 
   Ui::RemindReturnForm *UI;
   QVector<LibrarySystem::ReaderBorrowInfo> ReaderInfos;
