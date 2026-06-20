@@ -60,8 +60,14 @@ void ReturnBookForm::handleReaderNumberPushButtonClicked() {
   }
   QVector<BorrowDetailType> Details = DetailsErrOr.getValue();
 
+  // 清理旧的 cellWidget 和 QButtonGroup（避免内存泄漏）
+  // 注意：QTableWidget::setRowCount(0) 不会删除 cellWidget，必须手动删除
+  for (int Row = 0; Row < UI->BorrowingTableWidget->rowCount(); ++Row) {
+    delete UI->BorrowingTableWidget->cellWidget(Row, 0); // 封面 CoverPreviewLabel
+    delete UI->BorrowingTableWidget->cellWidget(Row, 5); // 归还 QCheckBox
+    delete UI->BorrowingTableWidget->cellWidget(Row, 6); // 续借 QCheckBox
+  }
   UI->BorrowingTableWidget->setRowCount(0);
-  // 清理旧的 QButtonGroup（避免内存泄漏）
   qDeleteAll(RowGroups);
   RowGroups.clear();
 

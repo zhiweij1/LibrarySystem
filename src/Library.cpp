@@ -84,6 +84,9 @@ ErrorOr<void> LibrarySystem::loadFromXlsx() {
     int status = 0;
     if (colCount >= 9)
       status = xlsx.read(row, 9).toInt();
+    // 校验状态值范围，非法值归一化为在馆，避免后续状态比较失效
+    if (status < BookCopy::BS_InLibrary || status > BookCopy::BS_NonLendable)
+      status = BookCopy::BS_InLibrary;
 
     QString CoverPath = "covers/" + ImageNo + ".jpg";
 
@@ -260,7 +263,25 @@ ErrorOr<void> LibrarySystem::saveToXlsx() {
   // 回到主 Sheet
   xlsx.selectSheet(xlsx.sheetNames()[0]);
 
+  // 保存前备份当前文件（覆盖旧 .bak），保证 saveAs 失败时有可恢复的副本。
+  // 备份失败不中断保存流程，仅记日志。
+  QString BakPath = XlsxPath + ".bak";
+  if (QFile::exists(BakPath))
+    QFile::remove(BakPath);
+  if (QFile::exists(XlsxPath)) {
+    if (QFile::copy(XlsxPath, BakPath))
+      qInfo() << "已备份原数据文件到" << BakPath;
+    else
+      qWarning() << "备份数据文件失败，继续保存:" << BakPath;
+  }
+
   if (!xlsx.saveAs(XlsxPath)) {
+    // saveAs 失败：原文件可能已损坏，尝试从 .bak 恢复
+    if (QFile::exists(BakPath)) {
+      QFile::remove(XlsxPath);
+      QFile::copy(BakPath, XlsxPath);
+      qInfo() << "saveAs 失败，已从备份恢复原文件:" << BakPath;
+    }
     lockXlsxFile(XlsxPath);
     return {ErrorCode::DatabaseError, "保存 Excel 文件失败"};
   }
@@ -365,6 +386,29 @@ ErrorOr<void> LibrarySystem::borrowBooks(int ReaderID,
   if (reader->IsInactive)
     return {ErrorCode::InvalidStatus, "该读者已注销，无法借书"};
 
+  // 预检：所有副本必须存在且可借，避免部分失败导致内存状态不一致
+  for (int cid : CopyIDs) {
+    int copyIdx = -1;
+    for (int i = 0; i < Copies.size(); ++i) {
+      if (Copies[i].ID == cid) {
+        copyIdx = i;
+        break;
+      }
+    }
+    if (copyIdx < 0)
+      return {ErrorCode::NotFound,
+              "未找到书籍副本，副本ID: " + QString::number(cid)};
+
+    const BookCopy &copy = Copies[copyIdx];
+    if (copy.Status == BookCopy::BS_Borrowed)
+      return {ErrorCode::InvalidStatus, "该书籍目前处于'借出'状态，无法再次借出"};
+    if (copy.Status == BookCopy::BS_Lost)
+      return {ErrorCode::InvalidStatus, "该书籍目前处于'遗失'状态，无法借出"};
+    if (copy.Status == BookCopy::BS_NonLendable)
+      return {ErrorCode::InvalidStatus, "该书籍目前处于'非外借书'状态，无法借出"};
+  }
+
+  // 全部预检通过后执行借书（此时不会再因状态问题失败）
   for (int cid : CopyIDs) {
     auto res = borrowBook(ReaderID, cid);
     if (!res)
@@ -450,7 +494,7 @@ ErrorOr<void> LibrarySystem::renewBook(int RecordID) {
   return {};
 }
 
-// ========== 归还 + 续借（同一事务） ==========
+// ========== 归还 + 续借（同一事务，先预检再执行，保证原子性） ==========
 
 ErrorOr<void>
 LibrarySystem::returnAndRenewBooks(const QList<int> &ReturnRecordIDs,
@@ -458,6 +502,68 @@ LibrarySystem::returnAndRenewBooks(const QList<int> &ReturnRecordIDs,
   if (ReturnRecordIDs.isEmpty() && RenewRecordIDs.isEmpty())
     return {};
 
+  // 预检归还记录
+  for (int rid : ReturnRecordIDs) {
+    int brIdx = -1;
+    for (int i = 0; i < Borrows.size(); ++i) {
+      if (Borrows[i].ID == rid) {
+        brIdx = i;
+        break;
+      }
+    }
+    if (brIdx < 0)
+      return {ErrorCode::NotFound,
+              "未找到借阅记录，记录ID: " + QString::number(rid)};
+    if (Borrows[brIdx].ReturnDate.isValid())
+      return {ErrorCode::InvalidStatus, "该借阅记录已归还，无法重复操作"};
+
+    int copyIdx = -1;
+    for (int i = 0; i < Copies.size(); ++i) {
+      if (Copies[i].ID == Borrows[brIdx].CopyId) {
+        copyIdx = i;
+        break;
+      }
+    }
+    if (copyIdx < 0)
+      return {ErrorCode::InternalError, "数据不一致：借阅记录关联的副本不存在"};
+    if (Copies[copyIdx].Status == BookCopy::BS_Lost)
+      return {ErrorCode::InvalidStatus,
+              "该书籍处于'遗失'状态，请先办理挂失处理后再归还"};
+    if (Copies[copyIdx].Status == BookCopy::BS_NonLendable)
+      return {ErrorCode::InvalidStatus, "该书籍处于'非外借书'状态，无法归还"};
+  }
+
+  // 预检续借记录
+  for (int rid : RenewRecordIDs) {
+    int brIdx = -1;
+    for (int i = 0; i < Borrows.size(); ++i) {
+      if (Borrows[i].ID == rid) {
+        brIdx = i;
+        break;
+      }
+    }
+    if (brIdx < 0)
+      return {ErrorCode::NotFound,
+              "未找到借阅记录，记录ID: " + QString::number(rid)};
+    if (Borrows[brIdx].ReturnDate.isValid())
+      return {ErrorCode::InvalidStatus, "该借阅记录已归还，无法续借"};
+
+    int copyIdx = -1;
+    for (int i = 0; i < Copies.size(); ++i) {
+      if (Copies[i].ID == Borrows[brIdx].CopyId) {
+        copyIdx = i;
+        break;
+      }
+    }
+    if (copyIdx < 0)
+      return {ErrorCode::InternalError, "数据不一致：借阅记录关联的副本不存在"};
+    if (Copies[copyIdx].Status == BookCopy::BS_Lost)
+      return {ErrorCode::InvalidStatus, "该书籍处于'遗失'状态，无法续借"};
+    if (Copies[copyIdx].Status == BookCopy::BS_NonLendable)
+      return {ErrorCode::InvalidStatus, "该书籍处于'非外借书'状态，无法续借"};
+  }
+
+  // 全部预检通过后执行（此时不会再因状态问题失败）
   for (int rid : ReturnRecordIDs) {
     auto res = returnBook(rid);
     if (!res)
