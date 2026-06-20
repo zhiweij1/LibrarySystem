@@ -127,9 +127,9 @@ public:
                              const QString &PhoneNumber);
 
   struct ReaderBorrowInfo {
-    Reader reader;
-    QVector<BorrowDetailType> urgentBooks;
-    QVector<BorrowDetailType> otherBooks;
+    Reader Reader;
+    QVector<BorrowDetailType> UrgentBooks;
+    QVector<BorrowDetailType> OtherBooks;
   };
   ErrorOr<QVector<ReaderBorrowInfo>> getRemindBorrowings(int Days);
 
