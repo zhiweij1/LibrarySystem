@@ -19,18 +19,15 @@ EditReaderForm::EditReaderForm(QWidget *Parent)
   connect(UI->SaveButton, &QPushButton::clicked, this,
           &EditReaderForm::handleSaveButtonClicked);
 
-  connect(UI->ReaderTableWidget, &QTableWidget::cellClicked, this,
-          [this](int Row) {
-            CurrentReaderID =
-                UI->ReaderTableWidget->item(Row, 0)->data(Qt::UserRole).toInt();
-            UI->NameLineEdit->setText(
-                UI->ReaderTableWidget->item(Row, 1)->text());
-            UI->IDLineEdit->setText(
-                UI->ReaderTableWidget->item(Row, 2)->text());
-            UI->PhoneLineEdit->setText(
-                UI->ReaderTableWidget->item(Row, 3)->text());
-            UI->groupBox->setEnabled(true);
-          });
+  connect(
+      UI->ReaderTableWidget, &QTableWidget::cellClicked, this, [this](int Row) {
+        CurrentReaderID =
+            UI->ReaderTableWidget->item(Row, 0)->data(Qt::UserRole).toInt();
+        UI->NameLineEdit->setText(UI->ReaderTableWidget->item(Row, 1)->text());
+        UI->IDLineEdit->setText(UI->ReaderTableWidget->item(Row, 2)->text());
+        UI->PhoneLineEdit->setText(UI->ReaderTableWidget->item(Row, 3)->text());
+        UI->groupBox->setEnabled(true);
+      });
 
   UI->ReaderTableWidget->setColumnCount(4);
   UI->ReaderTableWidget->setHorizontalHeaderLabels(
@@ -71,8 +68,7 @@ void EditReaderForm::refreshTable() {
   for (const auto &r : std::as_const(filtered)) {
     int row = UI->ReaderTableWidget->rowCount();
     UI->ReaderTableWidget->insertRow(row);
-    QTableWidgetItem *idItem =
-        new QTableWidgetItem(QString::number(r.ID));
+    QTableWidgetItem *idItem = new QTableWidgetItem(QString::number(r.ID));
     idItem->setData(Qt::UserRole, r.ID);
     UI->ReaderTableWidget->setItem(row, 0, idItem);
     UI->ReaderTableWidget->setItem(row, 1, new QTableWidgetItem(r.Name));

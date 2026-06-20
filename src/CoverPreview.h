@@ -12,7 +12,7 @@
 
 static inline QPixmap loadPixmapWithExif(const QString &Path) {
   QImageReader Reader(Path);
-  Reader.setAutoTransform(true);  // 自动处理 EXIF 方向
+  Reader.setAutoTransform(true); // 自动处理 EXIF 方向
   QImage Img = Reader.read();
   if (Img.isNull()) {
     return QPixmap();
@@ -25,19 +25,19 @@ public:
   explicit CoverPreviewLabel(const QString &CoverPath, int ThumbWidth,
                              int ThumbHeight, QWidget *Parent = nullptr)
       : QLabel(Parent), CoverPath(CoverPath) {
-    QString FullPath = LibrarySystem::getInstance().getDataDir() + "/" + CoverPath;
-    if (CoverPath.isEmpty() || LibrarySystem::getInstance().getDataDir().isEmpty()) {
+    QString FullPath =
+        LibrarySystem::getInstance().getDataDir() + "/" + CoverPath;
+    if (CoverPath.isEmpty() ||
+        LibrarySystem::getInstance().getDataDir().isEmpty()) {
       setText("无封面");
-      setStyleSheet(
-          "background-color: #E0E0E0; color: #999; font-size: 11px;");
+      setStyleSheet("background-color: #E0E0E0; color: #999; font-size: 11px;");
       setAlignment(Qt::AlignCenter);
       return;
     }
     QPixmap Pix = loadPixmapWithExif(FullPath);
     if (Pix.isNull()) {
       setText("无封面");
-      setStyleSheet(
-          "background-color: #E0E0E0; color: #999; font-size: 11px;");
+      setStyleSheet("background-color: #E0E0E0; color: #999; font-size: 11px;");
     } else {
       setPixmap(Pix.scaled(ThumbWidth, ThumbHeight, Qt::KeepAspectRatio,
                            Qt::SmoothTransformation));
@@ -51,7 +51,8 @@ public:
 protected:
   void mousePressEvent(QMouseEvent *event) override {
     if (event->button() == Qt::LeftButton) {
-      QString FullPath = LibrarySystem::getInstance().getDataDir() + "/" + CoverPath;
+      QString FullPath =
+          LibrarySystem::getInstance().getDataDir() + "/" + CoverPath;
       QPixmap Pix = loadPixmapWithExif(FullPath);
       if (!Pix.isNull()) {
         QDialog Dlg(this->window());

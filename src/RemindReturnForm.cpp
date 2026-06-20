@@ -5,8 +5,8 @@
 #include <QFrame>
 #include <QLabel>
 #include <QMessageBox>
-#include <QVBoxLayout>
 #include <QToolButton>
+#include <QVBoxLayout>
 
 RemindReturnForm::RemindReturnForm(QWidget *Parent)
     : QWidget(Parent), UI(new Ui::RemindReturnForm) {
@@ -44,8 +44,9 @@ void RemindReturnForm::loadData() {
     UI->cardLayout->insertWidget(UI->cardLayout->count() - 1, Card);
   }
 
-  UI->SummaryLabel->setText(
-      QString("共 %1 位读者，%2 本待催还").arg(ReaderInfos.size()).arg(UrgentCount));
+  UI->SummaryLabel->setText(QString("共 %1 位读者，%2 本待催还")
+                                .arg(ReaderInfos.size())
+                                .arg(UrgentCount));
 }
 
 void RemindReturnForm::clearCards() {
@@ -53,18 +54,20 @@ void RemindReturnForm::clearCards() {
   while (Layout->count() > 1) {
     QLayoutItem *Item = Layout->takeAt(0);
     if (QWidget *W = Item->widget()) {
-      W->setParent(nullptr);  // 先从布局移除
-      W->deleteLater();       // 延迟删除，让事件队列处理完
+      W->setParent(nullptr); // 先从布局移除
+      W->deleteLater();      // 延迟删除，让事件队列处理完
     }
     delete Item;
   }
 }
 
-QWidget *RemindReturnForm::createReaderCard(const LibrarySystem::ReaderBorrowInfo &Info) {
+QWidget *RemindReturnForm::createReaderCard(
+    const LibrarySystem::ReaderBorrowInfo &Info) {
   QFrame *Card = new QFrame();
   Card->setFrameShape(QFrame::StyledPanel);
   Card->setLineWidth(1);
-  Card->setStyleSheet("QFrame { background-color: #FFFFFF; border: 1px solid #E0E0E0; border-radius: 6px; }");
+  Card->setStyleSheet("QFrame { background-color: #FFFFFF; border: 1px solid "
+                      "#E0E0E0; border-radius: 6px; }");
 
   QVBoxLayout *CardLayout = new QVBoxLayout(Card);
   CardLayout->setSpacing(8);
@@ -102,8 +105,10 @@ QWidget *RemindReturnForm::createReaderCard(const LibrarySystem::ReaderBorrowInf
     QHBoxLayout *ToggleLayout = new QHBoxLayout();
 
     QToolButton *ToggleBtn = new QToolButton();
-    ToggleBtn->setText(QString("▶ 其他借书（%1 本）").arg(Info.OtherBooks.size()));
-    ToggleBtn->setStyleSheet("QToolButton{background:transparent;border:none;color:#666;font-size:12px;}");
+    ToggleBtn->setText(
+        QString("▶ 其他借书（%1 本）").arg(Info.OtherBooks.size()));
+    ToggleBtn->setStyleSheet("QToolButton{background:transparent;border:none;"
+                             "color:#666;font-size:12px;}");
     ToggleBtn->setCheckable(true);
     ToggleLayout->addWidget(ToggleBtn);
 
@@ -123,12 +128,14 @@ QWidget *RemindReturnForm::createReaderCard(const LibrarySystem::ReaderBorrowInf
     CardLayout->addWidget(OtherBooksWidget);
 
     int OtherBooksCount = Info.OtherBooks.size();
-    connect(ToggleBtn, &QToolButton::toggled, this, [ToggleBtn, OtherBooksWidget, OtherBooksCount](bool Checked) {
-      OtherBooksWidget->setVisible(Checked);
-      ToggleBtn->setText(Checked
-                             ? QString("▼ 其他借书")
-                             : QString("▶ 其他借书（%1 本）").arg(OtherBooksCount));
-    });
+    connect(ToggleBtn, &QToolButton::toggled, this,
+            [ToggleBtn, OtherBooksWidget, OtherBooksCount](bool Checked) {
+              OtherBooksWidget->setVisible(Checked);
+              ToggleBtn->setText(
+                  Checked
+                      ? QString("▼ 其他借书")
+                      : QString("▶ 其他借书（%1 本）").arg(OtherBooksCount));
+            });
   }
 
   CardLayout->addStretch();
@@ -138,7 +145,8 @@ QWidget *RemindReturnForm::createReaderCard(const LibrarySystem::ReaderBorrowInf
 QWidget *RemindReturnForm::createBookItem(const BorrowDetailType &Book,
                                           const QDate &Today, bool IsOther) {
   QFrame *Item = new QFrame();
-  Item->setStyleSheet("QFrame { background-color: #FAFAFA; border-radius: 4px; }");
+  Item->setStyleSheet(
+      "QFrame { background-color: #FAFAFA; border-radius: 4px; }");
   Item->setMinimumHeight(90);
 
   QHBoxLayout *Layout = new QHBoxLayout(Item);
@@ -146,7 +154,8 @@ QWidget *RemindReturnForm::createBookItem(const BorrowDetailType &Book,
   Layout->setSpacing(10);
 
   // 封面图片
-  CoverPreviewLabel *ImgLabel = new CoverPreviewLabel(Book.Info.CoverPath, 60, 80);
+  CoverPreviewLabel *ImgLabel =
+      new CoverPreviewLabel(Book.Info.CoverPath, 60, 80);
   ImgLabel->setFixedSize(60, 80);
   Layout->addWidget(ImgLabel);
 
@@ -157,22 +166,29 @@ QWidget *RemindReturnForm::createBookItem(const BorrowDetailType &Book,
   InfoLayout->setSpacing(2);
 
   QLabel *TitleLabel = new QLabel(Book.Info.Title);
-  TitleLabel->setStyleSheet(IsOther ? "background:transparent;font-size:13px;color:#333;" : "background:transparent;font-size:13px;font-weight:bold;color:#333;");
+  TitleLabel->setStyleSheet(
+      IsOther ? "background:transparent;font-size:13px;color:#333;"
+              : "background:transparent;font-size:13px;font-weight:bold;color:#"
+                "333;");
   InfoLayout->addWidget(TitleLabel);
 
   QLabel *AuthorLabel = new QLabel(QString("作者：%1").arg(Book.Info.Author));
-  AuthorLabel->setStyleSheet("background:transparent;font-size:11px;color:#666;");
+  AuthorLabel->setStyleSheet(
+      "background:transparent;font-size:11px;color:#666;");
   InfoLayout->addWidget(AuthorLabel);
 
-  QLabel *PublisherLabel = new QLabel(QString("出版社：%1").arg(Book.Info.Publisher));
-  PublisherLabel->setStyleSheet("background:transparent;font-size:11px;color:#666;");
+  QLabel *PublisherLabel =
+      new QLabel(QString("出版社：%1").arg(Book.Info.Publisher));
+  PublisherLabel->setStyleSheet(
+      "background:transparent;font-size:11px;color:#666;");
   InfoLayout->addWidget(PublisherLabel);
 
   Layout->addWidget(InfoWidget, 1);
 
   // 条码号
   QLabel *BarcodeLabel = new QLabel(Book.Copy.Barcode);
-  BarcodeLabel->setStyleSheet("background:transparent;font-size:11px;color:#888;min-width:80px;");
+  BarcodeLabel->setStyleSheet(
+      "background:transparent;font-size:11px;color:#888;min-width:80px;");
   BarcodeLabel->setAlignment(Qt::AlignCenter);
   Layout->addWidget(BarcodeLabel);
 
@@ -190,11 +206,13 @@ QWidget *RemindReturnForm::createBookItem(const BorrowDetailType &Book,
     StatusStyle = "color: #D32F2F; font-weight: bold;";
   } else {
     StatusText = QString("还剩 %1 天").arg(DaysLeft);
-    StatusStyle = IsOther ? "color: #999;" : "color: #F57C00; font-weight: bold;";
+    StatusStyle =
+        IsOther ? "color: #999;" : "color: #F57C00; font-weight: bold;";
   }
 
   QLabel *StatusLabel = new QLabel(StatusText);
-  StatusLabel->setStyleSheet("background:transparent;font-size:12px; " + StatusStyle);
+  StatusLabel->setStyleSheet("background:transparent;font-size:12px; " +
+                             StatusStyle);
   StatusLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
   StatusLabel->setMinimumWidth(70);
   Layout->addWidget(StatusLabel);

@@ -26,11 +26,11 @@ MainWindow::MainWindow(QWidget *Parent)
   RemindReturnPage = new RemindReturnForm(this);
   EditReaderPage = new EditReaderForm(this);
 
-  UI->stackedWidget->addWidget(BorrowPage);      // 索引 0
-  UI->stackedWidget->addWidget(ReturnPage);      // 索引 1
-  UI->stackedWidget->addWidget(QueryBookPage);   // 索引 2
-  UI->stackedWidget->addWidget(RemindReturnPage);// 索引 3
-  UI->stackedWidget->addWidget(EditReaderPage);  // 索引 4
+  UI->stackedWidget->addWidget(BorrowPage);       // 索引 0
+  UI->stackedWidget->addWidget(ReturnPage);       // 索引 1
+  UI->stackedWidget->addWidget(QueryBookPage);    // 索引 2
+  UI->stackedWidget->addWidget(RemindReturnPage); // 索引 3
+  UI->stackedWidget->addWidget(EditReaderPage);   // 索引 4
 
   UI->stackedWidget->setCurrentWidget(BorrowPage);
   changeTheme(Theme::purple, UI->BorrowBookButton);
@@ -87,14 +87,14 @@ void MainWindow::changeTheme(const Theme T, QPushButton *Btn) {
   cleanTheme();
 
   const QString Color = ThemeMap[T];
-  const QString ActiveBtnStyle =
-      SidebarBtnBase +
-      "QPushButton{background-color:" + Color +
-      ";border:1px solid rgba(0,0,0,0.15);}"
-      "QPushButton:pressed{background-color:" + Color +
-      ";border:1px solid rgba(0,0,0,0.15);}"
-      "QPushButton:disabled{background-color:" + Color +
-      ";border:1px solid rgba(0,0,0,0.15);}";
+  const QString ActiveBtnStyle = SidebarBtnBase +
+                                 "QPushButton{background-color:" + Color +
+                                 ";border:1px solid rgba(0,0,0,0.15);}"
+                                 "QPushButton:pressed{background-color:" +
+                                 Color +
+                                 ";border:1px solid rgba(0,0,0,0.15);}"
+                                 "QPushButton:disabled{background-color:" +
+                                 Color + ";border:1px solid rgba(0,0,0,0.15);}";
   Btn->setStyleSheet(ActiveBtnStyle);
   const QString FrameSS = "QFrame#ContentFrame{border:5px solid " + Color +
                           ";border-radius:8px;background-color:#F5F5F5;}";
