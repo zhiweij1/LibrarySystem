@@ -87,9 +87,9 @@ void QueryBookForm::handleStatusFilterChanged(int Index) {
 
 void QueryBookForm::initTable() {
   // 设置列数和表头标签
-  UI->ResultTableWidget->setColumnCount(8);
+  UI->ResultTableWidget->setColumnCount(9);
   UI->ResultTableWidget->setHorizontalHeaderLabels(
-      {"封面", "条码", "书名", "作者", "出版社", "状态", "借出日期", "预计归还日期"});
+      {"封面", "条码", "书名", "作者", "出版社", "分类号", "状态", "借出日期", "预计归还日期"});
 
   UI->ResultTableWidget->setEditTriggers(QAbstractItemView::NoEditTriggers);
   UI->ResultTableWidget->setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -115,25 +115,29 @@ void QueryBookForm::initTable() {
   UI->ResultTableWidget->horizontalHeader()->setSectionResizeMode(
       4, QHeaderView::Interactive);
   UI->ResultTableWidget->setColumnWidth(4, 300);
-  // 状态(5): 固定
+  // 分类号(5): 固定
   UI->ResultTableWidget->horizontalHeader()->setSectionResizeMode(
       5, QHeaderView::Fixed);
-  UI->ResultTableWidget->setColumnWidth(5, 150);
-  // 借出日期(6): 固定
+  UI->ResultTableWidget->setColumnWidth(5, 120);
+  // 状态(6): 固定
   UI->ResultTableWidget->horizontalHeader()->setSectionResizeMode(
       6, QHeaderView::Fixed);
   UI->ResultTableWidget->setColumnWidth(6, 150);
-  // 预计归还日期(7): 固定
+  // 借出日期(7): 固定
   UI->ResultTableWidget->horizontalHeader()->setSectionResizeMode(
       7, QHeaderView::Fixed);
   UI->ResultTableWidget->setColumnWidth(7, 150);
+  // 预计归还日期(8): 固定
+  UI->ResultTableWidget->horizontalHeader()->setSectionResizeMode(
+      8, QHeaderView::Fixed);
+  UI->ResultTableWidget->setColumnWidth(8, 150);
 }
 
 void QueryBookForm::updateTable() {
   // 删除旧 cell widget 防止内存泄漏
   for (int Row = 0; Row < UI->ResultTableWidget->rowCount(); ++Row) {
     delete UI->ResultTableWidget->cellWidget(Row, 0);
-    delete UI->ResultTableWidget->cellWidget(Row, 5);
+    delete UI->ResultTableWidget->cellWidget(Row, 6);
   }
   UI->ResultTableWidget->clearContents();
   UI->ResultTableWidget->setRowCount(0);
@@ -157,6 +161,8 @@ void QueryBookForm::updateTable() {
         Row, 3, new QTableWidgetItem(Item.first.Info.Author));
     UI->ResultTableWidget->setItem(
         Row, 4, new QTableWidgetItem(Item.first.Info.Publisher));
+    UI->ResultTableWidget->setItem(
+        Row, 5, new QTableWidgetItem(Item.first.Info.CLCID));
 
     // 状态列使用按钮
     QWidget *StatusWidget = new QWidget();
@@ -197,20 +203,20 @@ void QueryBookForm::updateTable() {
     }
 
     StatusLayout->addWidget(StatusBtn);
-    UI->ResultTableWidget->setCellWidget(Row, 5, StatusWidget);
+    UI->ResultTableWidget->setCellWidget(Row, 6, StatusWidget);
 
     if (Item.first.Copy.Status == BookCopy::BookStatus::BS_Borrowed) {
       UI->ResultTableWidget->setItem(
-          Row, 6,
+          Row, 7,
           new QTableWidgetItem(
               Item.first.Record.BorrowDate.toString("yyyy-MM-dd")));
       UI->ResultTableWidget->setItem(
-          Row, 7,
+          Row, 8,
           new QTableWidgetItem(
               Item.first.Record.DueDate.toString("yyyy-MM-dd")));
     } else {
-      UI->ResultTableWidget->setItem(Row, 6, new QTableWidgetItem("-"));
       UI->ResultTableWidget->setItem(Row, 7, new QTableWidgetItem("-"));
+      UI->ResultTableWidget->setItem(Row, 8, new QTableWidgetItem("-"));
     }
   }
 }

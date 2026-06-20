@@ -61,48 +61,50 @@ ErrorOr<void> LibrarySystem::loadFromXlsx() {
   if (sheets.isEmpty())
     return {ErrorCode::DatabaseError, "Excel 文件没有 Sheet"};
 
-  // ---- 主 Sheet（第一个 Sheet）：书名/作者/出版社/数量/编号/重新生成的编号/备注/状态 ----
+  // ---- 主 Sheet（第一个 Sheet）：书名/作者/出版社/数量/封面图文件号/条形码/分类号/备注/状态 ----
   xlsx.selectSheet(sheets[0]);
   int rowCount = xlsx.dimension().rowCount();
   int colCount = xlsx.dimension().columnCount();
 
   for (int row = 2; row <= rowCount; ++row) {
-    QString title = xlsx.read(row, 1).toString().trimmed();
-    if (title.isEmpty())
+    QString Title = xlsx.read(row, 1).toString().trimmed();
+    if (Title.isEmpty())
       continue;
 
-    QString author = xlsx.read(row, 2).toString().trimmed();
-    QString publisher = xlsx.read(row, 3).toString().trimmed();
-    QString imageNo = xlsx.read(row, 5).toString().trimmed();
-    QString barcode = xlsx.read(row, 6).toString().trimmed();
-    QString notes = xlsx.read(row, 7).toString().trimmed();
+    QString Author = xlsx.read(row, 2).toString().trimmed();
+    QString Publisher = xlsx.read(row, 3).toString().trimmed();
+    QString ImageNo = xlsx.read(row, 5).toString().trimmed();
+    QString BarCode = xlsx.read(row, 6).toString().trimmed();
+    QString CLCID = xlsx.read(row, 7).toString().trimmed();
+    QString Notes = xlsx.read(row, 8).toString().trimmed();
 
-    if (barcode.isEmpty())
+    if (BarCode.isEmpty())
       continue;
 
     int status = 0;
-    if (colCount >= 8)
-      status = xlsx.read(row, 8).toInt();
+    if (colCount >= 9)
+      status = xlsx.read(row, 9).toInt();
 
-    QString coverPath = "covers/" + imageNo + ".jpg";
+    QString CoverPath = "covers/" + ImageNo + ".jpg";
 
     BookInfo info;
     info.ID = NextInfoID++;
-    info.Title = title;
-    info.Author = author;
-    info.Publisher = publisher;
-    info.CoverPath = coverPath;
+    info.Title = Title;
+    info.Author = Author;
+    info.Publisher = Publisher;
+    info.CoverPath = CoverPath;
+    info.CLCID = CLCID;
     Infos.append(info);
 
     BookCopy copy;
     copy.ID = NextCopyID++;
     copy.InfoID = info.ID;
-    copy.Barcode = barcode;
+    copy.Barcode = BarCode;
     copy.Status = static_cast<BookCopy::BookStatus>(status);
     Copies.append(copy);
-    BarcodeToCopyIdx[barcode] = Copies.size() - 1;
-    if (!notes.isEmpty())
-      BarcodeNotes[barcode] = notes;
+    BarcodeToCopyIdx[BarCode] = Copies.size() - 1;
+    if (!Notes.isEmpty())
+      BarcodeNotes[BarCode] = Notes;
   }
 
   // ---- _readers Sheet ----
@@ -140,12 +142,12 @@ ErrorOr<void> LibrarySystem::loadFromXlsx() {
         NextBorrowID = br.ID + 1;
 
       QString cardNumber = xlsx.read(row, 2).toString().trimmed();
-      QString barcode = xlsx.read(row, 3).toString().trimmed();
+      QString BarCode = xlsx.read(row, 3).toString().trimmed();
 
       if (CardToReaderIdx.contains(cardNumber))
         br.ReaderId = Readers[CardToReaderIdx[cardNumber]].ID;
-      if (BarcodeToCopyIdx.contains(barcode))
-        br.CopyId = Copies[BarcodeToCopyIdx[barcode]].ID;
+      if (BarcodeToCopyIdx.contains(BarCode))
+        br.CopyId = Copies[BarcodeToCopyIdx[BarCode]].ID;
 
       QString borrowStr = xlsx.read(row, 4).toString().trimmed();
       QString dueStr = xlsx.read(row, 5).toString().trimmed();
@@ -171,9 +173,9 @@ ErrorOr<void> LibrarySystem::saveToXlsx() {
 
   QXlsx::Document xlsx;
 
-  // ---- 主 Sheet：书名/作者/出版社/数量/编号/重新生成的编号/备注/状态 ----
-  QStringList headers = {"书名", "作者", "出版社", "数量", "编号",
-                         "重新生成的编号", "备注", "状态"};
+  // ---- 主 Sheet：书名/作者/出版社/数量/封面图文件号/条形码/分类号/备注/状态 ----
+  QStringList headers = {"书名", "作者", "出版社", "数量", "封面图文件号",
+                         "条形码", "分类号", "备注", "状态"};
   for (int c = 0; c < headers.size(); ++c)
     xlsx.write(1, c + 1, headers[c]);
 
@@ -191,19 +193,20 @@ ErrorOr<void> LibrarySystem::saveToXlsx() {
       continue;
 
     // 从 CoverPath "covers/xxx.jpg" 提取图片编号 "xxx"
-    QString imageNo;
+    QString ImageNo;
     const QString &cp = info->CoverPath;
     if (cp.startsWith("covers/") && cp.endsWith(".jpg"))
-      imageNo = cp.mid(7, cp.length() - 11);
+      ImageNo = cp.mid(7, cp.length() - 11);
 
     xlsx.write(row, 1, info->Title);
     xlsx.write(row, 2, info->Author);
     xlsx.write(row, 3, info->Publisher);
     xlsx.write(row, 4, 1);                      // 数量
-    xlsx.write(row, 5, imageNo);                // 编号
-    xlsx.write(row, 6, copy.Barcode);           // 重新生成的编号
-    xlsx.write(row, 7, BarcodeNotes.value(copy.Barcode)); // 备注
-    xlsx.write(row, 8, static_cast<int>(copy.Status));    // 状态
+    xlsx.write(row, 5, ImageNo);                // 封面图文件号
+    xlsx.write(row, 6, copy.Barcode);           // 条形码
+    xlsx.write(row, 7, info->CLCID);            // 分类号
+    xlsx.write(row, 8, BarcodeNotes.value(copy.Barcode)); // 备注
+    xlsx.write(row, 9, static_cast<int>(copy.Status));    // 状态
     ++row;
   }
 
@@ -230,7 +233,7 @@ ErrorOr<void> LibrarySystem::saveToXlsx() {
   int bRow = 2;
   for (const auto &br : std::as_const(Borrows)) {
     // 解析外键为自然键
-    QString cardNumber, barcode;
+    QString cardNumber, BarCode;
     for (const auto &r : std::as_const(Readers)) {
       if (r.ID == br.ReaderId) {
         cardNumber = r.CardNumber;
@@ -239,14 +242,14 @@ ErrorOr<void> LibrarySystem::saveToXlsx() {
     }
     for (const auto &c : std::as_const(Copies)) {
       if (c.ID == br.CopyId) {
-        barcode = c.Barcode;
+        BarCode = c.Barcode;
         break;
       }
     }
 
     xlsx.write(bRow, 1, br.ID);
     xlsx.write(bRow, 2, cardNumber);
-    xlsx.write(bRow, 3, barcode);
+    xlsx.write(bRow, 3, BarCode);
     xlsx.write(bRow, 4, br.BorrowDate.toString("yyyy-MM-dd"));
     xlsx.write(bRow, 5, br.DueDate.toString("yyyy-MM-dd"));
     if (br.ReturnDate.isValid())
