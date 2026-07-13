@@ -130,7 +130,9 @@ public:
                           const QString &PhoneNumber);
   ErrorOr<void> updateReader(int ID, const QString &Name,
                              const QString &CardNumber,
-                             const QString &PhoneNumber);
+                             const QString &PhoneNumber,
+                             bool IsInactive);
+  ErrorOr<void> deleteReader(int ID);
 
   struct ReaderBorrowInfo {
     Reader Reader;

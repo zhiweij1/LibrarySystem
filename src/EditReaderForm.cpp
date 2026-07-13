@@ -18,6 +18,8 @@ EditReaderForm::EditReaderForm(QWidget *Parent)
           &EditReaderForm::handleAddButtonClicked);
   connect(UI->SaveButton, &QPushButton::clicked, this,
           &EditReaderForm::handleSaveButtonClicked);
+  connect(UI->DeleteButton, &QPushButton::clicked, this,
+          &EditReaderForm::handleDeleteButtonClicked);
 
   connect(
       UI->ReaderTableWidget, &QTableWidget::cellClicked, this, [this](int Row) {
@@ -26,12 +28,19 @@ EditReaderForm::EditReaderForm(QWidget *Parent)
         UI->NameLineEdit->setText(UI->ReaderTableWidget->item(Row, 1)->text());
         UI->IDLineEdit->setText(UI->ReaderTableWidget->item(Row, 2)->text());
         UI->PhoneLineEdit->setText(UI->ReaderTableWidget->item(Row, 3)->text());
+        // 加载注销状态
+        for (const auto &r : std::as_const(AllReaders)) {
+          if (r.ID == CurrentReaderID) {
+            UI->InactiveCheckBox->setChecked(r.IsInactive);
+            break;
+          }
+        }
         UI->groupBox->setEnabled(true);
       });
 
-  UI->ReaderTableWidget->setColumnCount(4);
+  UI->ReaderTableWidget->setColumnCount(5);
   UI->ReaderTableWidget->setHorizontalHeaderLabels(
-      {"ID", "姓名", "卡号", "电话"});
+      {"ID", "姓名", "卡号", "电话", "状态"});
   UI->ReaderTableWidget->setColumnHidden(0, true);
   UI->ReaderTableWidget->setSelectionBehavior(QAbstractItemView::SelectRows);
   UI->ReaderTableWidget->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -74,6 +83,15 @@ void EditReaderForm::refreshTable() {
     UI->ReaderTableWidget->setItem(row, 1, new QTableWidgetItem(r.Name));
     UI->ReaderTableWidget->setItem(row, 2, new QTableWidgetItem(r.CardNumber));
     UI->ReaderTableWidget->setItem(row, 3, new QTableWidgetItem(r.PhoneNumber));
+    QTableWidgetItem *statusItem =
+        new QTableWidgetItem(r.IsInactive ? "已注销" : "正常");
+    UI->ReaderTableWidget->setItem(row, 4, statusItem);
+    if (r.IsInactive) {
+      for (int c = 0; c <= 4; ++c) {
+        if (auto *item = UI->ReaderTableWidget->item(row, c))
+          item->setForeground(Qt::red);
+      }
+    }
   }
 
   CurrentReaderID = -1;
@@ -96,6 +114,7 @@ void EditReaderForm::handleAddButtonClicked() {
   UI->NameLineEdit->clear();
   UI->IDLineEdit->setText(cardRes.getValue());
   UI->PhoneLineEdit->clear();
+  UI->InactiveCheckBox->setChecked(false);
   UI->groupBox->setEnabled(true);
   UI->NameLineEdit->setFocus();
 }
@@ -122,7 +141,8 @@ void EditReaderForm::handleSaveButtonClicked() {
     res = lib.addReader(name, cardNumber, phone);
   } else {
     // 修改
-    res = lib.updateReader(CurrentReaderID, name, cardNumber, phone);
+    res = lib.updateReader(CurrentReaderID, name, cardNumber, phone,
+                           UI->InactiveCheckBox->isChecked());
   }
 
   if (!res) {
@@ -131,5 +151,29 @@ void EditReaderForm::handleSaveButtonClicked() {
   }
 
   QMessageBox::information(this, "提示", "读者信息已保存");
+  refreshTable();
+}
+
+void EditReaderForm::handleDeleteButtonClicked() {
+  if (CurrentReaderID < 0) {
+    QMessageBox::warning(this, "提示", "请先在表格中选择要删除的读者");
+    return;
+  }
+
+  auto ret = QMessageBox::question(
+      this, "确认删除",
+      QString("确定要删除该读者吗？此操作不可撤销。\n\n读者姓名：%1\n卡号：%2")
+          .arg(UI->NameLineEdit->text(), UI->IDLineEdit->text()),
+      QMessageBox::Yes | QMessageBox::No);
+  if (ret != QMessageBox::Yes)
+    return;
+
+  auto res = LibrarySystem::getInstance().deleteReader(CurrentReaderID);
+  if (!res) {
+    QMessageBox::critical(this, "错误", "删除失败: " + res.getErrMsg());
+    return;
+  }
+
+  QMessageBox::information(this, "提示", "读者已删除");
   refreshTable();
 }

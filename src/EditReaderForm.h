@@ -22,6 +22,7 @@ private:
   void refreshTable();
   void handleAddButtonClicked();
   void handleSaveButtonClicked();
+  void handleDeleteButtonClicked();
 
   Ui::EditReaderForm *UI;
   QVector<Reader> AllReaders;

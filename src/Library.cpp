@@ -5,6 +5,7 @@
 #include <QDate>
 #include <QFile>
 #include <QFileInfo>
+#include <QSet>
 
 #ifdef Q_OS_WIN
 #include <windows.h>
@@ -20,8 +21,8 @@ ErrorOr<void> LibrarySystem::lockXlsxFile(const QString &Path) {
     DWORD Err = GetLastError();
     if (Err == ERROR_SHARING_VIOLATION || Err == ERROR_LOCK_VIOLATION)
       return {ErrorCode::InternalError, "请关闭 Excel 后重试"};
-    // 文件不存在的情况交给 loadFromXlsx 报错
-    return {};
+    return {ErrorCode::InternalError,
+            QString("无法锁定数据文件（错误代码 %1）").arg(Err)};
   }
   LockHandle = H;
 #endif
@@ -138,6 +139,21 @@ ErrorOr<void> LibrarySystem::loadFromXlsx() {
   if (Sheets.contains("_borrows")) {
     Xlsx.selectSheet("_borrows");
     int BMax = Xlsx.dimension().rowCount();
+
+    // 日期单元格可能是字符串（本程序写入）或 QDateTime（Excel 转换后），
+    // 需要兼容两种格式，否则 Excel 打开保存后日期全部解析失败。
+    auto readDateCell = [&Xlsx](int Row, int Col) -> QDateTime {
+      QVariant Val = Xlsx.read(Row, Col);
+      if (Val.userType() == QMetaType::QDateTime)
+        return Val.toDateTime();
+      if (Val.userType() == QMetaType::QDate)
+        return Val.toDate().startOfDay();
+      QString Str = Val.toString().trimmed();
+      if (Str.isEmpty())
+        return QDateTime();
+      return QDateTime::fromString(Str, "yyyy-MM-dd");
+    };
+
     for (int Row = 2; Row <= BMax; ++Row) {
       QVariant IdVal = Xlsx.read(Row, 1);
       if (IdVal.isNull() || IdVal.toString().trimmed().isEmpty())
@@ -156,13 +172,11 @@ ErrorOr<void> LibrarySystem::loadFromXlsx() {
       if (BarcodeToCopyIdx.contains(BarCode))
         Br.CopyId = Copies[BarcodeToCopyIdx[BarCode]].ID;
 
-      QString BorrowStr = Xlsx.read(Row, 4).toString().trimmed();
-      QString DueStr = Xlsx.read(Row, 5).toString().trimmed();
-      QString ReturnStr = Xlsx.read(Row, 6).toString().trimmed();
-      Br.BorrowDate = QDateTime::fromString(BorrowStr, "yyyy-MM-dd");
-      Br.DueDate = QDateTime::fromString(DueStr, "yyyy-MM-dd");
-      if (!ReturnStr.isEmpty())
-        Br.ReturnDate = QDateTime::fromString(ReturnStr, "yyyy-MM-dd");
+      Br.BorrowDate = readDateCell(Row, 4);
+      Br.DueDate = readDateCell(Row, 5);
+      QDateTime Ret = readDateCell(Row, 6);
+      if (Ret.isValid())
+        Br.ReturnDate = Ret;
 
       Borrows.append(Br);
     }
@@ -381,6 +395,14 @@ ErrorOr<void> LibrarySystem::borrowBooks(int ReaderID,
   if (CopyIDs.isEmpty())
     return {ErrorCode::ValidationError, "未选择任何书籍"};
 
+  // 检查是否有重复的副本 ID
+  QSet<int> Seen;
+  for (int Cid : CopyIDs) {
+    if (Seen.contains(Cid))
+      return {ErrorCode::ValidationError, "重复选择了同一本书"};
+    Seen.insert(Cid);
+  }
+
   // 检查读者是否存在且未注销
   Reader *Reader = nullptr;
   for (auto &R : Readers) {
@@ -521,6 +543,19 @@ LibrarySystem::returnAndRenewBooks(const QList<int> &ReturnRecordIDs,
                                    const QList<int> &RenewRecordIDs) {
   if (ReturnRecordIDs.isEmpty() && RenewRecordIDs.isEmpty())
     return {};
+
+  // 检查是否有重复的记录 ID（同一记录不能出现两次，也不能同时归还和续借）
+  QSet<int> Seen;
+  for (int Rid : ReturnRecordIDs) {
+    if (Seen.contains(Rid))
+      return {ErrorCode::ValidationError, "重复选择了同一借阅记录"};
+    Seen.insert(Rid);
+  }
+  for (int Rid : RenewRecordIDs) {
+    if (Seen.contains(Rid))
+      return {ErrorCode::ValidationError, "同一记录不能同时归还和续借"};
+    Seen.insert(Rid);
+  }
 
   // 预检归还记录
   for (int Rid : ReturnRecordIDs) {
@@ -738,7 +773,8 @@ ErrorOr<void> LibrarySystem::addReader(const QString &Name,
 
 ErrorOr<void> LibrarySystem::updateReader(int ID, const QString &Name,
                                           const QString &CardNumber,
-                                          const QString &PhoneNumber) {
+                                          const QString &PhoneNumber,
+                                          bool IsInactive) {
   int Idx = -1;
   for (int I = 0; I < Readers.size(); ++I) {
     if (Readers[I].ID == ID) {
@@ -761,7 +797,31 @@ ErrorOr<void> LibrarySystem::updateReader(int ID, const QString &Name,
   Readers[Idx].Name = Name;
   Readers[Idx].CardNumber = CardNumber;
   Readers[Idx].PhoneNumber = PhoneNumber;
+  Readers[Idx].IsInactive = IsInactive;
   CardToReaderIdx[CardNumber] = Idx;
+
+  return saveToXlsx();
+}
+
+ErrorOr<void> LibrarySystem::deleteReader(int ID) {
+  // 检查是否有未归还的借阅记录
+  for (const auto &Br : std::as_const(Borrows)) {
+    if (Br.ReaderId == ID && !Br.ReturnDate.isValid())
+      return {ErrorCode::InvalidStatus, "该读者有未归还的图书，无法删除"};
+  }
+
+  int Idx = -1;
+  for (int I = 0; I < Readers.size(); ++I) {
+    if (Readers[I].ID == ID) {
+      Idx = I;
+      break;
+    }
+  }
+  if (Idx < 0)
+    return {ErrorCode::NotFound, "读者不存在"};
+
+  CardToReaderIdx.remove(Readers[Idx].CardNumber);
+  Readers.removeAt(Idx);
 
   return saveToXlsx();
 }

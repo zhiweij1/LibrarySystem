@@ -106,7 +106,17 @@ void ReturnBookForm::handleReaderNumberPushButtonClicked() {
     QButtonGroup *Group = new QButtonGroup(this);
     Group->addButton(CBReturn);
     Group->addButton(CBRenew);
-    Group->setExclusive(true);
+    Group->setExclusive(false);
+
+    // 互斥：勾选一个时取消另一个，但允许再次点击取消勾选
+    connect(CBReturn, &QCheckBox::toggled, [CBRenew](bool Checked) {
+      if (Checked)
+        CBRenew->setChecked(false);
+    });
+    connect(CBRenew, &QCheckBox::toggled, [CBReturn](bool Checked) {
+      if (Checked)
+        CBReturn->setChecked(false);
+    });
 
     UI->BorrowingTableWidget->setCellWidget(Row, 5, CBReturn);
     UI->BorrowingTableWidget->setCellWidget(Row, 6, CBRenew);
