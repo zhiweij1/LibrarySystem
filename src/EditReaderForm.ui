@@ -173,7 +173,7 @@
                 </size>
                </property>
                <property name="text">
-                <string>注销该读者（注销后无法借书）</string>
+                <string>注销</string>
                </property>
               </widget>
              </item>

@@ -785,6 +785,14 @@ ErrorOr<void> LibrarySystem::updateReader(int ID, const QString &Name,
   if (Idx < 0)
     return {ErrorCode::NotFound, "读者不存在"};
 
+  // 注销检查：有未归还图书时不允许注销
+  if (IsInactive && !Readers[Idx].IsInactive) {
+    for (const auto &Br : std::as_const(Borrows)) {
+      if (Br.ReaderId == ID && !Br.ReturnDate.isValid())
+        return {ErrorCode::InvalidStatus, "该读者有未归还的图书，无法注销"};
+    }
+  }
+
   // 卡号唯一性检查（排除自身）
   if (CardToReaderIdx.contains(CardNumber) &&
       CardToReaderIdx[CardNumber] != Idx)
