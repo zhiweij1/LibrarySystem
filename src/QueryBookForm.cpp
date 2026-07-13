@@ -17,6 +17,7 @@ QueryBookForm::QueryBookForm(QWidget *Parent)
   UI->StatusFilterComboBox->addItem("借出", BookCopy::BS_Borrowed);
   UI->StatusFilterComboBox->addItem("遗失", BookCopy::BS_Lost);
   UI->StatusFilterComboBox->addItem("非外借书", BookCopy::BS_NonLendable);
+  UI->StatusFilterComboBox->addItem("未知状态", BookCopy::BS_Unkown_Status);
 
   connect(UI->SearchButton, &QPushButton::clicked, this,
           &QueryBookForm::handleSearchButtonClicked);
@@ -203,7 +204,7 @@ void QueryBookForm::updateTable() {
           "color: white; background-color: #2196F3; border-radius: 4px;");
       StatusBtn->setEnabled(false);
     } else {
-      StatusBtn->setText("未知");
+      StatusBtn->setText("未知状态");
       StatusBtn->setStyleSheet(
           "color: white; background-color: #9E9E9E; border-radius: 4px;");
       StatusBtn->setEnabled(false);
