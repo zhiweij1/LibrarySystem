@@ -85,9 +85,12 @@ ErrorOr<void> LibrarySystem::loadFromXlsx() {
     int Status = 0;
     if (ColCount >= 9)
       Status = Xlsx.read(Row, 9).toInt();
-    // 校验状态值范围，非法值归一化为在馆，避免后续状态比较失效
-    if (Status < BookCopy::BS_InLibrary || Status > BookCopy::BS_NonLendable)
-      Status = BookCopy::BS_InLibrary;
+    // 校验状态值范围，非法值直接报错
+    if (Status < BookCopy::BS_InLibrary || Status > BookCopy::BS_Unkown_Status)
+      return {ErrorCode::ValidationError,
+              QString("条码 [%1] 的状态值 %2 非法，应为 0-4")
+                  .arg(BarCode)
+                  .arg(Status)};
 
     QString CoverPath = "covers/" + ImageNo + ".jpg";
 
@@ -354,6 +357,8 @@ ErrorOr<void> LibrarySystem::borrowBook(int ReaderID, int CopyID) {
     return {ErrorCode::InvalidStatus, "该书籍目前处于'遗失'状态，无法借出"};
   if (Copy.Status == BookCopy::BS_NonLendable)
     return {ErrorCode::InvalidStatus, "该书籍目前处于'非外借书'状态，无法借出"};
+  if (Copy.Status == BookCopy::BS_Unkown_Status)
+    return {ErrorCode::InvalidStatus, "该书籍目前处于'未知状态'，无法借出"};
 
   // 创建借阅记录
   BorrowRecord Br;
@@ -411,6 +416,9 @@ ErrorOr<void> LibrarySystem::borrowBooks(int ReaderID,
     if (Copy.Status == BookCopy::BS_NonLendable)
       return {ErrorCode::InvalidStatus,
               "该书籍目前处于'非外借书'状态，无法借出"};
+    if (Copy.Status == BookCopy::BS_Unkown_Status)
+      return {ErrorCode::InvalidStatus,
+              "该书籍目前处于'未知状态'，无法借出"};
   }
 
   // 全部预检通过后执行借书（此时不会再因状态问题失败）
@@ -458,6 +466,8 @@ ErrorOr<void> LibrarySystem::returnBook(int RecordID) {
             "该书籍处于'遗失'状态，请先办理挂失处理后再归还"};
   if (Copy.Status == BookCopy::BS_NonLendable)
     return {ErrorCode::InvalidStatus, "该书籍处于'非外借书'状态，无法归还"};
+  if (Copy.Status == BookCopy::BS_Unkown_Status)
+    return {ErrorCode::InvalidStatus, "该书籍处于'未知状态'，无法归还"};
 
   Br.ReturnDate = QDateTime::currentDateTime();
   Copies[CopyIdx].Status = BookCopy::BS_InLibrary;
@@ -497,6 +507,8 @@ ErrorOr<void> LibrarySystem::renewBook(int RecordID) {
     return {ErrorCode::InvalidStatus, "该书籍处于'遗失'状态，无法续借"};
   if (Copy.Status == BookCopy::BS_NonLendable)
     return {ErrorCode::InvalidStatus, "该书籍处于'非外借书'状态，无法续借"};
+  if (Copy.Status == BookCopy::BS_Unkown_Status)
+    return {ErrorCode::InvalidStatus, "该书籍处于'未知状态'，无法续借"};
 
   Br.DueDate = Br.DueDate.addDays(30);
   return {};
@@ -539,6 +551,8 @@ LibrarySystem::returnAndRenewBooks(const QList<int> &ReturnRecordIDs,
               "该书籍处于'遗失'状态，请先办理挂失处理后再归还"};
     if (Copies[CopyIdx].Status == BookCopy::BS_NonLendable)
       return {ErrorCode::InvalidStatus, "该书籍处于'非外借书'状态，无法归还"};
+    if (Copies[CopyIdx].Status == BookCopy::BS_Unkown_Status)
+      return {ErrorCode::InvalidStatus, "该书籍处于'未知状态'，无法归还"};
   }
 
   // 预检续借记录
@@ -569,6 +583,8 @@ LibrarySystem::returnAndRenewBooks(const QList<int> &ReturnRecordIDs,
       return {ErrorCode::InvalidStatus, "该书籍处于'遗失'状态，无法续借"};
     if (Copies[CopyIdx].Status == BookCopy::BS_NonLendable)
       return {ErrorCode::InvalidStatus, "该书籍处于'非外借书'状态，无法续借"};
+    if (Copies[CopyIdx].Status == BookCopy::BS_Unkown_Status)
+      return {ErrorCode::InvalidStatus, "该书籍处于'未知状态'，无法续借"};
   }
 
   // 全部预检通过后执行（此时不会再因状态问题失败）

@@ -65,7 +65,13 @@ struct BookInfo {
 };
 
 struct BookCopy {
-  enum BookStatus { BS_InLibrary = 0, BS_Borrowed, BS_Lost, BS_NonLendable };
+  enum BookStatus {
+    BS_InLibrary = 0,     // 在馆
+    BS_Borrowed = 1,      // 解除
+    BS_Lost = 2,          // 遗失
+    BS_NonLendable = 3,   // 不可借阅
+    BS_Unkown_Status = 4, // 未知状态
+  };
   int ID = -1;
   int InfoID = -1;
   QString Barcode;
