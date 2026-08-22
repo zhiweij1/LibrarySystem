@@ -352,6 +352,34 @@ LibrarySystem::getReaderByCardNumber(const QString &CardNumber) {
   return Readers[CardToReaderIdx[CardNumber]];
 }
 
+// ========== 按手机号精确匹配读者（家庭共用号码可能多人命中） ==========
+
+ErrorOr<QVector<Reader>>
+LibrarySystem::searchReadersByPhone(const QString &PhoneNumber) {
+  if (PhoneNumber.isEmpty())
+    return {ErrorCode::ValidationError, "手机号不能为空"};
+  QVector<Reader> Results;
+  for (const auto &R : std::as_const(Readers)) {
+    if (R.PhoneNumber == PhoneNumber)
+      Results.append(R);
+  }
+  return Results;
+}
+
+// ========== 按姓名模糊匹配读者（重名可能多人命中） ==========
+
+ErrorOr<QVector<Reader>>
+LibrarySystem::searchReadersByName(const QString &Name) {
+  if (Name.isEmpty())
+    return {ErrorCode::ValidationError, "姓名不能为空"};
+  QVector<Reader> Results;
+  for (const auto &R : std::as_const(Readers)) {
+    if (R.Name.contains(Name, Qt::CaseInsensitive))
+      Results.append(R);
+  }
+  return Results;
+}
+
 // ========== 借书（单本，内存操作） ==========
 
 ErrorOr<void> LibrarySystem::borrowBook(int ReaderID, int CopyID) {

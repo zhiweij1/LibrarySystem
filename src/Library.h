@@ -120,6 +120,8 @@ public:
   ErrorOr<std::pair<BookInfo, BookCopy>>
   getBookDataByBarcode(const QString &Barcode);
   ErrorOr<Reader> getReaderByCardNumber(const QString &CardNumber);
+  ErrorOr<QVector<Reader>> searchReadersByPhone(const QString &PhoneNumber);
+  ErrorOr<QVector<Reader>> searchReadersByName(const QString &Name);
   ErrorOr<QVector<BorrowDetailType>> getBorrowingDetailsByReader(int ReaderId);
   ErrorOr<std::pair<BorrowDetailType, Reader>>
   getBorrowingDetailByBarcode(const QString &Barcode);

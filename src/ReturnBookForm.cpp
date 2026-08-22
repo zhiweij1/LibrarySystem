@@ -1,5 +1,6 @@
 #include "ReturnBookForm.h"
 #include "CoverPreview.h"
+#include "ReaderPicker.h"
 #include "ui_ReturnBookForm.h"
 
 #include "Library.h"
@@ -47,7 +48,24 @@ void ReturnBookForm::handleReaderNumberPushButtonClicked() {
     return;
   }
 
-  // 2) 卡号未命中，再按书籍条码查询（扫码还书）
+  // 2) 手机号精确匹配（家庭共用号码可能多人命中，需人工选择）
+  auto PhoneErrOr = LibrarySystem::getInstance().searchReadersByPhone(Input);
+  if (PhoneErrOr && !PhoneErrOr.getValue().isEmpty()) {
+    QVector<Reader> Matches = PhoneErrOr.getValue();
+    Reader Target = Matches.first();
+    if (Matches.size() > 1) {
+      auto Picked = pickReader(this, Matches);
+      if (!Picked)
+        return;
+      Target = *Picked;
+    }
+    loadReaderBorrowings(Target);
+    // 回填卡号，提交操作后的自动刷新仍按卡号命中
+    UI->ReaderNumberLineEdit->setText(Target.CardNumber);
+    return;
+  }
+
+  // 3) 再按书籍条码查询（扫码还书）
   auto DetailErrOr =
       LibrarySystem::getInstance().getBorrowingDetailByBarcode(Input);
   if (DetailErrOr) {
@@ -83,6 +101,7 @@ void ReturnBookForm::handleReaderNumberPushButtonClicked() {
 
   QMessageBox::warning(this, "warning",
                        "未找到该编号对应的读者或条码: " + Input);
+
 }
 
 void ReturnBookForm::loadReaderBorrowings(const Reader &R,

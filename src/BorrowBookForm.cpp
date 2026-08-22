@@ -1,5 +1,6 @@
 #include "BorrowBookForm.h"
 #include "CoverPreview.h"
+#include "ReaderPicker.h"
 #include "ui_BorrowBookForm.h"
 
 #include <QMessageBox>
@@ -144,21 +145,44 @@ void BorrowBookForm::handleBookAddButtonClicked() {
 }
 
 void BorrowBookForm::handleReaderNumberButtonClicked() {
-  QString CardNumber = UI->ReaderNumLineEdit->text().trimmed();
-  if (CardNumber.isEmpty())
+  QString Keyword = UI->ReaderNumLineEdit->text().trimmed();
+  if (Keyword.isEmpty())
     return;
 
-  auto ReaderErrOr =
-      LibrarySystem::getInstance().getReaderByCardNumber(CardNumber);
+  // 识别链：卡号精确 -> 手机号精确 -> 姓名模糊
+  QVector<Reader> Candidates;
+  auto CardErrOr = LibrarySystem::getInstance().getReaderByCardNumber(Keyword);
+  if (CardErrOr) {
+    Candidates.append(CardErrOr.getValue());
+  } else {
+    auto PhoneErrOr =
+        LibrarySystem::getInstance().searchReadersByPhone(Keyword);
+    if (PhoneErrOr && !PhoneErrOr.getValue().isEmpty())
+      Candidates = PhoneErrOr.getValue();
+    else {
+      auto NameErrOr = LibrarySystem::getInstance().searchReadersByName(Keyword);
+      if (NameErrOr)
+        Candidates = NameErrOr.getValue();
+    }
+  }
 
-  if (!ReaderErrOr) {
-    QMessageBox::warning(this, "warning", "未找到该编号的读者");
+  if (Candidates.isEmpty()) {
+    QMessageBox::warning(
+        this, "warning", "未找到匹配的读者（可输入读者号 / 手机号 / 姓名）");
     UI->ReaderInfoLabel->setText("未选择读者");
     UI->ReaderInfoLabel->setStyleSheet("background:transparent;color:red;");
     return;
   }
 
-  RdrOpt = ReaderErrOr.getValue();
+  Reader Target = Candidates.first();
+  if (Candidates.size() > 1) {
+    auto Picked = pickReader(this, Candidates);
+    if (!Picked)
+      return; // 取消选择，保持原状态
+    Target = *Picked;
+  }
+
+  RdrOpt = Target;
   UI->ReaderInfoLabel->setText(
       QString("姓名：%1\n卡号：%2\n电话：%3")
           .arg(RdrOpt->Name, RdrOpt->CardNumber, RdrOpt->PhoneNumber));
