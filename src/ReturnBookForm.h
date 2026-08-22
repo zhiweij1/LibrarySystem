@@ -1,8 +1,11 @@
 #ifndef RETURNBOOKFORM_H
 #define RETURNBOOKFORM_H
 
-#include <QButtonGroup>
+#include "Library.h"
+
 #include <QWidget>
+
+#include <optional>
 
 namespace Ui {
 class ReturnBookForm;
@@ -18,9 +21,10 @@ public:
 private:
   void handleReaderNumberPushButtonClicked();
   void handleSubmitButtonClicked();
+  void loadReaderBorrowings(const Reader &R, bool PreserveChecks = false);
 
   Ui::ReturnBookForm *UI;
-  QMap<int, QButtonGroup *> RowGroups;
+  std::optional<Reader> CurrentReader; // 最近加载的读者，提交后刷新不依赖输入框
 };
 
 #endif // RETURNBOOKFORM_H

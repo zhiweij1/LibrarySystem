@@ -113,14 +113,18 @@ public:
   LibrarySystem(const LibrarySystem &) = delete;
   LibrarySystem &operator=(const LibrarySystem &) = delete;
 
-  ErrorOr<void> init(const QString &XlsxPath);
+  ErrorOr<void> init(const QString &XlsxPath, int BorrowDays, int MaxBooks);
   ErrorOr<void> borrowBooks(int ReaderID, const QVector<int> &CopyIDs);
-  ErrorOr<void> returnAndRenewBooks(const QList<int> &ReturnRecordIDs,
-                                    const QList<int> &RenewRecordIDs);
+  ErrorOr<void> returnBooks(const QList<int> &ReturnRecordIDs);
   ErrorOr<std::pair<BookInfo, BookCopy>>
   getBookDataByBarcode(const QString &Barcode);
   ErrorOr<Reader> getReaderByCardNumber(const QString &CardNumber);
+  ErrorOr<QVector<Reader>> searchReadersByPhone(const QString &PhoneNumber);
+  ErrorOr<QVector<Reader>> searchReadersByName(const QString &Name);
   ErrorOr<QVector<BorrowDetailType>> getBorrowingDetailsByReader(int ReaderId);
+  ErrorOr<std::pair<BorrowDetailType, Reader>>
+  getBorrowingDetailByBarcode(const QString &Barcode);
+  int getActiveBorrowCount(int ReaderId) const;
   ErrorOr<QVector<std::pair<BorrowDetailType, Reader>>>
   queryBooks(const QString &Barcode, const QString &Title,
              const QString &Author, const QString &Publisher);
@@ -132,7 +136,6 @@ public:
                              const QString &CardNumber,
                              const QString &PhoneNumber,
                              bool IsInactive);
-  ErrorOr<void> deleteReader(int ID);
 
   struct ReaderBorrowInfo {
     Reader Reader;
@@ -142,6 +145,8 @@ public:
   ErrorOr<QVector<ReaderBorrowInfo>> getRemindBorrowings(int Days);
 
   QString getDataDir() const { return DataDir; }
+  int getBorrowDays() const { return BorrowDays; }
+  int getMaxBooks() const { return MaxBooks; }
 
 private:
   LibrarySystem() = default;
@@ -155,7 +160,25 @@ private:
   // ---- 事务相关 private 方法（内存操作，不再需要 QSqlQuery） ----
   ErrorOr<void> borrowBook(int ReaderID, int CopyID);
   ErrorOr<void> returnBook(int RecordID);
-  ErrorOr<void> renewBook(int RecordID);
+
+  // ---- 内存状态快照：保存失败时回滚，保证内存与文件一致 ----
+  struct StateSnapshot {
+    QVector<BookInfo> Infos;
+    QVector<BookCopy> Copies;
+    QVector<Reader> Readers;
+    QVector<BorrowRecord> Borrows;
+    QHash<QString, int> BarcodeToCopyIdx;
+    QHash<QString, int> CardToReaderIdx;
+    QHash<QString, QString> BarcodeNotes;
+    int NextInfoID = 1;
+    int NextCopyID = 1;
+    int NextReaderID = 1;
+    int NextBorrowID = 1;
+  };
+  StateSnapshot takeSnapshot() const;
+  void restoreSnapshot(const StateSnapshot &Snap);
+  // 防御性全量重建卡号索引，避免增量维护遗漏导致卡号指向错位
+  void rebuildReaderIndex();
 
   // ---- 内存数据存储 ----
   QVector<BookInfo> Infos;
@@ -175,6 +198,10 @@ private:
 
   QString XlsxPath;
   QString DataDir;
+
+  // 借阅规则（来自 settings.ini：borrow/days、borrow/maxBooks）
+  int BorrowDays = 30;
+  int MaxBooks = 3;
 
 #ifdef Q_OS_WIN
   void *LockHandle = nullptr; // HANDLE

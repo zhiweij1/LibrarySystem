@@ -20,9 +20,9 @@ public:
 private:
   void performSearch();
   void refreshTable();
+  void selectReaderById(int ID);
   void handleAddButtonClicked();
   void handleSaveButtonClicked();
-  void handleDeleteButtonClicked();
 
   Ui::EditReaderForm *UI;
   QVector<Reader> AllReaders;

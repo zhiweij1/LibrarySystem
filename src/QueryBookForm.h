@@ -16,6 +16,10 @@ public:
   explicit QueryBookForm(QWidget *Parent = nullptr);
   ~QueryBookForm();
 
+protected:
+  // 页面被切换显示时自动刷新，避免借还后看到过期状态
+  void showEvent(QShowEvent *Event) override;
+
 private slots:
   void handleSearchButtonClicked();
   void handleStatusFilterChanged(int Index);

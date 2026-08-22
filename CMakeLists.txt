@@ -25,6 +25,7 @@ set(CORE_SOURCES
 set(UI_SOURCES
     src/main.cpp
     src/CoverPreview.h
+    src/ReaderPicker.h
     src/MainWindow.h
     src/MainWindow.cpp
     src/MainWindow.ui
