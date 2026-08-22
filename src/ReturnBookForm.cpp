@@ -4,6 +4,7 @@
 
 #include "Library.h"
 
+#include <QAbstractItemView>
 #include <QCheckBox>
 #include <QMessageBox>
 #include <QVBoxLayout>
@@ -35,30 +36,86 @@ ReturnBookForm::ReturnBookForm(QWidget *Parent)
 ReturnBookForm::~ReturnBookForm() { delete UI; }
 
 void ReturnBookForm::handleReaderNumberPushButtonClicked() {
-  QString CardNumber = UI->ReaderNumberLineEdit->text().trimmed();
-  auto ReaderErrOr =
-      LibrarySystem::getInstance().getReaderByCardNumber(CardNumber);
+  QString Input = UI->ReaderNumberLineEdit->text().trimmed();
+  if (Input.isEmpty())
+    return;
 
-  if (!ReaderErrOr) {
-    QMessageBox::warning(this, "warning",
-                         "查询读者号失败: " + ReaderErrOr.getErrMsg());
+  // 1) 先按读者卡号查询
+  auto ReaderErrOr = LibrarySystem::getInstance().getReaderByCardNumber(Input);
+  if (ReaderErrOr) {
+    loadReaderBorrowings(ReaderErrOr.getValue());
     return;
   }
 
-  auto CurrentReader = ReaderErrOr.getValue();
-  UI->ReaderInfoLabel->setText(QString("姓名：%1\n卡号：%2\n电话：%3")
-                                   .arg(CurrentReader.Name,
-                                        CurrentReader.CardNumber,
-                                        CurrentReader.PhoneNumber));
+  // 2) 卡号未命中，再按书籍条码查询（扫码还书）
+  auto DetailErrOr =
+      LibrarySystem::getInstance().getBorrowingDetailByBarcode(Input);
+  if (DetailErrOr) {
+    std::pair<BorrowDetailType, Reader> Pair = DetailErrOr.getValue();
+    // 加载该读者的在借列表（保留已有勾选），并勾选本书"归还"
+    loadReaderBorrowings(Pair.second, true);
 
-  auto DetailsErrOr = LibrarySystem::getInstance().getBorrowingDetailsByReader(
-      CurrentReader.ID);
+    for (int Row = 0; Row < UI->BorrowingTableWidget->rowCount(); ++Row) {
+      QTableWidgetItem *Item = UI->BorrowingTableWidget->item(Row, 1);
+      if (Item && Item->text() == Input) {
+        auto *CBReturn = qobject_cast<QCheckBox *>(
+            UI->BorrowingTableWidget->cellWidget(Row, 5));
+        if (CBReturn)
+          CBReturn->setChecked(true);
+        UI->BorrowingTableWidget->scrollToItem(
+            Item, QAbstractItemView::PositionAtCenter);
+        break;
+      }
+    }
+
+    // 输入框回填读者卡号，提交操作后的刷新仍按读者查询
+    UI->ReaderNumberLineEdit->setText(Pair.second.CardNumber);
+    qInfo() << QString("[扫码还书]条码 [%1] 定位到读者 [%2] 并勾选归还")
+                   .arg(Input, Pair.second.Name);
+    return;
+  }
+
+  // 条码存在但不可还（如在馆、遗失），提示具体原因
+  if (LibrarySystem::getInstance().getBookDataByBarcode(Input)) {
+    QMessageBox::warning(this, "warning", DetailErrOr.getErrMsg());
+    return;
+  }
+
+  QMessageBox::warning(this, "warning",
+                       "未找到该编号对应的读者或条码: " + Input);
+}
+
+void ReturnBookForm::loadReaderBorrowings(const Reader &R,
+                                          bool PreserveChecks) {
+  UI->ReaderInfoLabel->setText(QString("姓名：%1\n卡号：%2\n电话：%3")
+                                   .arg(R.Name, R.CardNumber, R.PhoneNumber));
+
+  auto DetailsErrOr =
+      LibrarySystem::getInstance().getBorrowingDetailsByReader(R.ID);
   if (!DetailsErrOr) {
     QMessageBox::warning(this, "warning",
                          "查询借阅记录失败: " + DetailsErrOr.getErrMsg());
     return;
   }
   QVector<BorrowDetailType> Details = DetailsErrOr.getValue();
+
+  // 记录当前勾选状态（同一读者连续扫码还书时保留已勾选项）
+  QHash<QString, int> OldChecks; // 条码 -> 1 归还 / 2 续借
+  if (PreserveChecks) {
+    for (int Row = 0; Row < UI->BorrowingTableWidget->rowCount(); ++Row) {
+      QTableWidgetItem *Item = UI->BorrowingTableWidget->item(Row, 1);
+      if (!Item)
+        continue;
+      auto *CBReturn = qobject_cast<QCheckBox *>(
+          UI->BorrowingTableWidget->cellWidget(Row, 5));
+      auto *CBRenew = qobject_cast<QCheckBox *>(
+          UI->BorrowingTableWidget->cellWidget(Row, 6));
+      if (CBReturn && CBReturn->isChecked())
+        OldChecks[Item->text()] = 1;
+      else if (CBRenew && CBRenew->isChecked())
+        OldChecks[Item->text()] = 2;
+    }
+  }
 
   // 清理旧的 cellWidget 和 QButtonGroup（避免内存泄漏）
   // 注意：QTableWidget::setRowCount(0) 不会删除 cellWidget，必须手动删除
@@ -122,6 +179,20 @@ void ReturnBookForm::handleReaderNumberPushButtonClicked() {
     UI->BorrowingTableWidget->setCellWidget(Row, 6, CBRenew);
 
     RowGroups.insert(Row, Group);
+  }
+
+  // 恢复勾选状态
+  if (PreserveChecks) {
+    for (int Row = 0; Row < UI->BorrowingTableWidget->rowCount(); ++Row) {
+      int State = OldChecks.value(
+          UI->BorrowingTableWidget->item(Row, 1)->text(), 0);
+      if (State == 0)
+        continue;
+      auto *CB = qobject_cast<QCheckBox *>(
+          UI->BorrowingTableWidget->cellWidget(Row, State == 1 ? 5 : 6));
+      if (CB)
+        CB->setChecked(true);
+    }
   }
 }
 

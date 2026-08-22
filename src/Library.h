@@ -113,7 +113,7 @@ public:
   LibrarySystem(const LibrarySystem &) = delete;
   LibrarySystem &operator=(const LibrarySystem &) = delete;
 
-  ErrorOr<void> init(const QString &XlsxPath);
+  ErrorOr<void> init(const QString &XlsxPath, int BorrowDays, int MaxBooks);
   ErrorOr<void> borrowBooks(int ReaderID, const QVector<int> &CopyIDs);
   ErrorOr<void> returnAndRenewBooks(const QList<int> &ReturnRecordIDs,
                                     const QList<int> &RenewRecordIDs);
@@ -121,6 +121,9 @@ public:
   getBookDataByBarcode(const QString &Barcode);
   ErrorOr<Reader> getReaderByCardNumber(const QString &CardNumber);
   ErrorOr<QVector<BorrowDetailType>> getBorrowingDetailsByReader(int ReaderId);
+  ErrorOr<std::pair<BorrowDetailType, Reader>>
+  getBorrowingDetailByBarcode(const QString &Barcode);
+  int getActiveBorrowCount(int ReaderId) const;
   ErrorOr<QVector<std::pair<BorrowDetailType, Reader>>>
   queryBooks(const QString &Barcode, const QString &Title,
              const QString &Author, const QString &Publisher);
@@ -142,6 +145,8 @@ public:
   ErrorOr<QVector<ReaderBorrowInfo>> getRemindBorrowings(int Days);
 
   QString getDataDir() const { return DataDir; }
+  int getBorrowDays() const { return BorrowDays; }
+  int getMaxBooks() const { return MaxBooks; }
 
 private:
   LibrarySystem() = default;
@@ -175,6 +180,10 @@ private:
 
   QString XlsxPath;
   QString DataDir;
+
+  // 借阅规则（来自 settings.ini：borrow/days、borrow/maxBooks）
+  int BorrowDays = 30;
+  int MaxBooks = 3;
 
 #ifdef Q_OS_WIN
   void *LockHandle = nullptr; // HANDLE

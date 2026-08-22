@@ -80,9 +80,23 @@ int main(int argc, char *argv[]) {
       exit(0); // 用户取消
     }
     Settings.setValue("data/xlsxPath", XlsxPath);
+    Settings.sync();
   }
 
-  if (!LibrarySystem::getInstance().init(XlsxPath)) {
+  // 借阅规则配置：借期天数 / 每人最多可借本数
+  // （读回并写入默认值，方便用户直接在 ini 中查看和修改）
+  bool OkVal = false;
+  int BorrowDays = Settings.value("borrow/days", 30).toInt(&OkVal);
+  if (!OkVal || BorrowDays < 1)
+    BorrowDays = 30;
+  int MaxBooks = Settings.value("borrow/maxBooks", 3).toInt(&OkVal);
+  if (!OkVal || MaxBooks < 1)
+    MaxBooks = 3;
+  Settings.setValue("borrow/days", BorrowDays);
+  Settings.setValue("borrow/maxBooks", MaxBooks);
+  Settings.sync();
+
+  if (!LibrarySystem::getInstance().init(XlsxPath, BorrowDays, MaxBooks)) {
     QMessageBox::critical(
         nullptr, "", "错误：无法打开数据文件，程序将退出。\n路径: " + XlsxPath);
     exit(-2);

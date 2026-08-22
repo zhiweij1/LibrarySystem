@@ -310,9 +310,12 @@ ErrorOr<void> LibrarySystem::saveToXlsx() {
 
 // ========== 初始化 ==========
 
-ErrorOr<void> LibrarySystem::init(const QString &XlsxPath) {
+ErrorOr<void> LibrarySystem::init(const QString &XlsxPath, int BorrowDays,
+                                  int MaxBooks) {
   this->XlsxPath = XlsxPath;
   this->DataDir = QFileInfo(XlsxPath).absolutePath();
+  this->BorrowDays = qMax(1, BorrowDays);
+  this->MaxBooks = qMax(1, MaxBooks);
 
   if (!QFile::exists(XlsxPath))
     return {ErrorCode::DatabaseError, "Excel 文件不存在: " + XlsxPath};
@@ -380,7 +383,7 @@ ErrorOr<void> LibrarySystem::borrowBook(int ReaderID, int CopyID) {
   Br.ReaderId = ReaderID;
   Br.CopyId = CopyID;
   Br.BorrowDate = QDateTime::currentDateTime();
-  Br.DueDate = Br.BorrowDate.addDays(30);
+  Br.DueDate = Br.BorrowDate.addDays(BorrowDays);
   Borrows.append(Br);
 
   // 更新副本状态
@@ -415,6 +418,16 @@ ErrorOr<void> LibrarySystem::borrowBooks(int ReaderID,
     return {ErrorCode::NotFound, "读者不存在"};
   if (Reader->IsInactive)
     return {ErrorCode::InvalidStatus, "该读者已注销，无法借书"};
+
+  // 借书数量上限：读者未归还数量 + 本次借书数量不得超过上限
+  int ActiveCount = getActiveBorrowCount(ReaderID);
+  if (ActiveCount + CopyIDs.size() > MaxBooks)
+    return {ErrorCode::InvalidStatus,
+            QString("超出借书数量上限：每人最多可借 %1 本，该读者当前已借 %2 "
+                    "本，本次拟借 %3 本")
+                .arg(MaxBooks)
+                .arg(ActiveCount)
+                .arg(CopyIDs.size())};
 
   // 预检：所有副本必须存在且可借，避免部分失败导致内存状态不一致
   for (int Cid : CopyIDs) {
@@ -532,7 +545,7 @@ ErrorOr<void> LibrarySystem::renewBook(int RecordID) {
   if (Copy.Status == BookCopy::BS_Unkown_Status)
     return {ErrorCode::InvalidStatus, "该书籍处于'未知状态'，无法续借"};
 
-  Br.DueDate = Br.DueDate.addDays(30);
+  Br.DueDate = Br.DueDate.addDays(BorrowDays);
   return {};
 }
 
@@ -674,6 +687,67 @@ LibrarySystem::getBorrowingDetailsByReader(int ReaderId) {
     Results.append(Detail);
   }
   return Results;
+}
+
+// ========== 通过书籍条码查询在借记录（扫码还书用） ==========
+
+ErrorOr<std::pair<BorrowDetailType, Reader>>
+LibrarySystem::getBorrowingDetailByBarcode(const QString &Barcode) {
+  if (!BarcodeToCopyIdx.contains(Barcode))
+    return {ErrorCode::NotFound, "条码不存在: " + Barcode};
+
+  const BookCopy &Copy = Copies[BarcodeToCopyIdx[Barcode]];
+  if (Copy.Status != BookCopy::BS_Borrowed)
+    return {ErrorCode::InvalidStatus, "该书籍当前不在'借出'状态: " + Barcode};
+
+  const BookInfo *Info = nullptr;
+  for (const auto &Inf : std::as_const(Infos)) {
+    if (Inf.ID == Copy.InfoID) {
+      Info = &Inf;
+      break;
+    }
+  }
+  if (!Info)
+    return {ErrorCode::InternalError, "数据不一致：副本关联的书籍信息不存在"};
+
+  // 查找未归还的借阅记录
+  const BorrowRecord *Found = nullptr;
+  for (const auto &Br : std::as_const(Borrows)) {
+    if (Br.CopyId == Copy.ID && !Br.ReturnDate.isValid()) {
+      Found = &Br;
+      break;
+    }
+  }
+  if (!Found)
+    return {ErrorCode::InternalError,
+            "数据不一致：书籍为'借出'状态但没有对应的在借记录"};
+
+  const Reader *Rdr = nullptr;
+  for (const auto &R : std::as_const(Readers)) {
+    if (R.ID == Found->ReaderId) {
+      Rdr = &R;
+      break;
+    }
+  }
+  if (!Rdr)
+    return {ErrorCode::InternalError, "数据不一致：借阅记录关联的读者不存在"};
+
+  BorrowDetailType Detail;
+  Detail.Record = *Found;
+  Detail.Copy = Copy;
+  Detail.Info = *Info;
+  return std::make_pair(Detail, *Rdr);
+}
+
+// ========== 统计读者当前未归还数量 ==========
+
+int LibrarySystem::getActiveBorrowCount(int ReaderId) const {
+  int Count = 0;
+  for (const auto &Br : Borrows) {
+    if (Br.ReaderId == ReaderId && !Br.ReturnDate.isValid())
+      ++Count;
+  }
+  return Count;
 }
 
 // ========== 综合查询（条码/书名/作者/出版社，支持模糊） ==========

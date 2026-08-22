@@ -80,6 +80,20 @@ void BorrowBookForm::handleBookAddButtonClicked() {
     }
   }
 
+  // 借书数量上限：已选读者时提前拦截（提交时后端仍会校验）
+  if (RdrOpt && !RdrOpt->IsInactive) {
+    int MaxBooks = LibrarySystem::getInstance().getMaxBooks();
+    int Active = LibrarySystem::getInstance().getActiveBorrowCount(RdrOpt->ID);
+    if (Active + UI->BookListTableWidget->rowCount() + 1 > MaxBooks) {
+      QMessageBox::warning(
+          this, "warning",
+          QString("超出借书数量上限：每人最多可借 %1 本，该读者当前已借 %2 本")
+              .arg(MaxBooks)
+              .arg(Active));
+      return;
+    }
+  }
+
   int Row = UI->BookListTableWidget->rowCount();
   UI->BookListTableWidget->insertRow(Row);
 
@@ -154,6 +168,19 @@ void BorrowBookForm::handleReaderNumberButtonClicked() {
     QMessageBox::warning(this, "warning", "该读者已注销，无法借书");
   } else {
     UI->ReaderInfoLabel->setStyleSheet("background:transparent;color:black;");
+
+    // 待借清单 + 已借数量超出上限时提醒（提交时后端会拒绝）
+    int MaxBooks = LibrarySystem::getInstance().getMaxBooks();
+    int Active = LibrarySystem::getInstance().getActiveBorrowCount(RdrOpt->ID);
+    int Pending = UI->BookListTableWidget->rowCount();
+    if (Active + Pending > MaxBooks)
+      QMessageBox::warning(
+          this, "warning",
+          QString("超出借书数量上限：每人最多可借 %1 本，该读者当前已借 %2 "
+                  "本，待借清单中还有 %3 本，提交时将被拒绝")
+              .arg(MaxBooks)
+              .arg(Active)
+              .arg(Pending));
   }
 }
 

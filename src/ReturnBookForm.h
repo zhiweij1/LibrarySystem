@@ -1,6 +1,8 @@
 #ifndef RETURNBOOKFORM_H
 #define RETURNBOOKFORM_H
 
+#include "Library.h"
+
 #include <QButtonGroup>
 #include <QWidget>
 
@@ -18,6 +20,7 @@ public:
 private:
   void handleReaderNumberPushButtonClicked();
   void handleSubmitButtonClicked();
+  void loadReaderBorrowings(const Reader &R, bool PreserveChecks = false);
 
   Ui::ReturnBookForm *UI;
   QMap<int, QButtonGroup *> RowGroups;
