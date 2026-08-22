@@ -18,8 +18,6 @@ EditReaderForm::EditReaderForm(QWidget *Parent)
           &EditReaderForm::handleAddButtonClicked);
   connect(UI->SaveButton, &QPushButton::clicked, this,
           &EditReaderForm::handleSaveButtonClicked);
-  connect(UI->DeleteButton, &QPushButton::clicked, this,
-          &EditReaderForm::handleDeleteButtonClicked);
 
   connect(
       UI->ReaderTableWidget, &QTableWidget::cellClicked, this, [this](int Row) {
@@ -152,28 +150,39 @@ void EditReaderForm::handleSaveButtonClicked() {
 
   QMessageBox::information(this, "提示", "读者信息已保存");
   refreshTable();
+
+  // 恢复选中刚保存的读者，避免再次点击"保存"时误走新增分支
+  int TargetID = CurrentReaderID;
+  if (TargetID < 0) {
+    // 新增：按卡号（唯一）找回新生成的 ID
+    for (const auto &r : std::as_const(AllReaders)) {
+      if (r.CardNumber == cardNumber) {
+        TargetID = r.ID;
+        break;
+      }
+    }
+  }
+  selectReaderById(TargetID);
 }
 
-void EditReaderForm::handleDeleteButtonClicked() {
-  if (CurrentReaderID < 0) {
-    QMessageBox::warning(this, "提示", "请先在表格中选择要删除的读者");
+void EditReaderForm::selectReaderById(int ID) {
+  if (ID < 0)
     return;
+  for (int Row = 0; Row < UI->ReaderTableWidget->rowCount(); ++Row) {
+    if (UI->ReaderTableWidget->item(Row, 0)->data(Qt::UserRole).toInt() == ID) {
+      UI->ReaderTableWidget->selectRow(Row);
+      CurrentReaderID = ID;
+      UI->NameLineEdit->setText(UI->ReaderTableWidget->item(Row, 1)->text());
+      UI->IDLineEdit->setText(UI->ReaderTableWidget->item(Row, 2)->text());
+      UI->PhoneLineEdit->setText(UI->ReaderTableWidget->item(Row, 3)->text());
+      for (const auto &r : std::as_const(AllReaders)) {
+        if (r.ID == ID) {
+          UI->InactiveCheckBox->setChecked(r.IsInactive);
+          break;
+        }
+      }
+      UI->groupBox->setEnabled(true);
+      return;
+    }
   }
-
-  auto ret = QMessageBox::question(
-      this, "确认删除",
-      QString("确定要删除该读者吗？此操作不可撤销。\n\n读者姓名：%1\n卡号：%2")
-          .arg(UI->NameLineEdit->text(), UI->IDLineEdit->text()),
-      QMessageBox::Yes | QMessageBox::No);
-  if (ret != QMessageBox::Yes)
-    return;
-
-  auto res = LibrarySystem::getInstance().deleteReader(CurrentReaderID);
-  if (!res) {
-    QMessageBox::critical(this, "错误", "删除失败: " + res.getErrMsg());
-    return;
-  }
-
-  QMessageBox::information(this, "提示", "读者已删除");
-  refreshTable();
 }

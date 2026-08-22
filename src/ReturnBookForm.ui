@@ -25,7 +25,7 @@
         </size>
        </property>
        <property name="text">
-        <string>读者号 / 手机号 / 书籍条码：</string>
+        <string>读者号 / 手机号 / 姓名 / 书籍条码：</string>
        </property>
       </widget>
      </item>

@@ -3,6 +3,7 @@
 
 #include "Library.h"
 #include <QDate>
+#include <QTimer>
 #include <QVector>
 #include <QWidget>
 
@@ -17,6 +18,10 @@ public:
   explicit RemindReturnForm(QWidget *Parent = nullptr);
   ~RemindReturnForm();
 
+protected:
+  // 页面被切换显示时自动刷新，保证催还数据为最新
+  void showEvent(QShowEvent *Event) override;
+
 private slots:
   void handleQueryClicked();
 
@@ -28,6 +33,7 @@ private:
                           bool IsOther = false);
 
   Ui::RemindReturnForm *UI;
+  QTimer *SpinTimer = nullptr; // 天数调节防抖，避免长按连续重建卡片
   QVector<LibrarySystem::ReaderBorrowInfo> ReaderInfos;
 };
 

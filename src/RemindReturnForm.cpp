@@ -5,8 +5,14 @@
 #include <QFrame>
 #include <QLabel>
 #include <QMessageBox>
+#include <QShowEvent>
 #include <QToolButton>
 #include <QVBoxLayout>
+
+void RemindReturnForm::showEvent(QShowEvent *Event) {
+  QWidget::showEvent(Event);
+  loadData(); // 切换到本页时刷新为最新催还数据
+}
 
 RemindReturnForm::RemindReturnForm(QWidget *Parent)
     : QWidget(Parent), UI(new Ui::RemindReturnForm) {
@@ -14,8 +20,14 @@ RemindReturnForm::RemindReturnForm(QWidget *Parent)
 
   connect(UI->QueryButton, &QPushButton::clicked, this,
           &RemindReturnForm::handleQueryClicked);
+
+  // 天数调节防抖：长按 ↑/↓ 连续触发时只在停顿后重建一次卡片
+  SpinTimer = new QTimer(this);
+  SpinTimer->setSingleShot(true);
+  SpinTimer->setInterval(300);
+  connect(SpinTimer, &QTimer::timeout, this, &RemindReturnForm::loadData);
   connect(UI->DaysSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), this,
-          &RemindReturnForm::handleQueryClicked);
+          [this]() { SpinTimer->start(); });
 
   // 初始加载
   loadData();

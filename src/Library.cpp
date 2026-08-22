@@ -93,7 +93,9 @@ ErrorOr<void> LibrarySystem::loadFromXlsx() {
                   .arg(BarCode)
                   .arg(Status)};
 
-    QString CoverPath = "covers/" + ImageNo + ".jpg";
+    // 无封面图文件号时保持空路径，避免 "covers/.jpg" 在保存/加载间逐轮漂移
+    QString CoverPath =
+        ImageNo.isEmpty() ? QString() : "covers/" + ImageNo + ".jpg";
 
     BookInfo Info;
     Info.ID = NextInfoID++;
@@ -219,6 +221,10 @@ ErrorOr<void> LibrarySystem::saveToXlsx() {
     const QString &Cp = Info->CoverPath;
     if (Cp.startsWith("covers/") && Cp.endsWith(".jpg"))
       ImageNo = Cp.mid(7, Cp.length() - 11);
+    // 清洗历史数据：全由点构成的编号（如 "."、".."）视为无封面，阻断逐轮漂移
+    if (!ImageNo.isEmpty() &&
+        ImageNo.count(QLatin1Char('.')) == ImageNo.size())
+      ImageNo.clear();
 
     Xlsx.write(Row, 1, Info->Title);
     Xlsx.write(Row, 2, Info->Author);
@@ -305,7 +311,43 @@ ErrorOr<void> LibrarySystem::saveToXlsx() {
     return {ErrorCode::DatabaseError, "保存 Excel 文件失败"};
   }
 
-  return lockXlsxFile(XlsxPath);
+  // 数据已成功落盘。若恰在此窗口期被 Excel 打开导致重新加锁失败，
+  // 不视为保存失败（否则调用方会误回滚内存，造成内存与文件分叉），
+  // 仅记录警告；下一次操作保存时若文件仍被占用会明确报错并回滚。
+  auto LockRes = lockXlsxFile(XlsxPath);
+  if (!LockRes)
+    qWarning() << "数据已保存，但重新锁定数据文件失败:" << LockRes.getErrMsg();
+  return {};
+}
+
+// ========== 内存状态快照（保存失败时回滚用） ==========
+
+LibrarySystem::StateSnapshot LibrarySystem::takeSnapshot() const {
+  return {Infos,        Copies,        Readers,        Borrows,
+          BarcodeToCopyIdx, CardToReaderIdx, BarcodeNotes, NextInfoID,
+          NextCopyID,    NextReaderID,  NextBorrowID};
+}
+
+void LibrarySystem::restoreSnapshot(const StateSnapshot &Snap) {
+  Infos = Snap.Infos;
+  Copies = Snap.Copies;
+  Readers = Snap.Readers;
+  Borrows = Snap.Borrows;
+  BarcodeToCopyIdx = Snap.BarcodeToCopyIdx;
+  CardToReaderIdx = Snap.CardToReaderIdx;
+  BarcodeNotes = Snap.BarcodeNotes;
+  NextInfoID = Snap.NextInfoID;
+  NextCopyID = Snap.NextCopyID;
+  NextReaderID = Snap.NextReaderID;
+  NextBorrowID = Snap.NextBorrowID;
+}
+
+void LibrarySystem::rebuildReaderIndex() {
+  CardToReaderIdx.clear();
+  for (int I = 0; I < Readers.size(); ++I) {
+    if (!Readers[I].CardNumber.isEmpty())
+      CardToReaderIdx[Readers[I].CardNumber] = I;
+  }
 }
 
 // ========== 初始化 ==========
@@ -485,13 +527,22 @@ ErrorOr<void> LibrarySystem::borrowBooks(int ReaderID,
   }
 
   // 全部预检通过后执行借书（此时不会再因状态问题失败）
+  StateSnapshot Snap = takeSnapshot();
   for (int Cid : CopyIDs) {
     auto Res = borrowBook(ReaderID, Cid);
-    if (!Res)
+    if (!Res) {
+      restoreSnapshot(Snap);
       return Res;
+    }
   }
 
-  return saveToXlsx();
+  auto SaveRes = saveToXlsx();
+  if (!SaveRes) {
+    // 保存失败：回滚内存，保证内存与文件一致，用户可关闭 Excel 后重试
+    restoreSnapshot(Snap);
+    return SaveRes;
+  }
+  return {};
 }
 
 // ========== 归还（单本，内存操作） ==========
@@ -537,64 +588,17 @@ ErrorOr<void> LibrarySystem::returnBook(int RecordID) {
   return {};
 }
 
-// ========== 续借（单本，内存操作） ==========
+// ========== 归还（同一事务，先预检再执行，保证原子性） ==========
 
-ErrorOr<void> LibrarySystem::renewBook(int RecordID) {
-  int BrIdx = -1;
-  for (int I = 0; I < Borrows.size(); ++I) {
-    if (Borrows[I].ID == RecordID) {
-      BrIdx = I;
-      break;
-    }
-  }
-  if (BrIdx < 0)
-    return {ErrorCode::NotFound,
-            "未找到借阅记录，记录ID: " + QString::number(RecordID)};
+ErrorOr<void> LibrarySystem::returnBooks(const QList<int> &ReturnRecordIDs) {
+  if (ReturnRecordIDs.isEmpty())
+    return {ErrorCode::ValidationError, "未选择任何借阅记录"};
 
-  BorrowRecord &Br = Borrows[BrIdx];
-  if (Br.ReturnDate.isValid())
-    return {ErrorCode::InvalidStatus, "该借阅记录已归还，无法续借"};
-
-  int CopyIdx = -1;
-  for (int I = 0; I < Copies.size(); ++I) {
-    if (Copies[I].ID == Br.CopyId) {
-      CopyIdx = I;
-      break;
-    }
-  }
-  if (CopyIdx < 0)
-    return {ErrorCode::InternalError, "数据不一致：借阅记录关联的副本不存在"};
-
-  const BookCopy &Copy = Copies[CopyIdx];
-  if (Copy.Status == BookCopy::BS_Lost)
-    return {ErrorCode::InvalidStatus, "该书籍处于'遗失'状态，无法续借"};
-  if (Copy.Status == BookCopy::BS_NonLendable)
-    return {ErrorCode::InvalidStatus, "该书籍处于'非外借书'状态，无法续借"};
-  if (Copy.Status == BookCopy::BS_Unkown_Status)
-    return {ErrorCode::InvalidStatus, "该书籍处于'未知状态'，无法续借"};
-
-  Br.DueDate = Br.DueDate.addDays(BorrowDays);
-  return {};
-}
-
-// ========== 归还 + 续借（同一事务，先预检再执行，保证原子性） ==========
-
-ErrorOr<void>
-LibrarySystem::returnAndRenewBooks(const QList<int> &ReturnRecordIDs,
-                                   const QList<int> &RenewRecordIDs) {
-  if (ReturnRecordIDs.isEmpty() && RenewRecordIDs.isEmpty())
-    return {};
-
-  // 检查是否有重复的记录 ID（同一记录不能出现两次，也不能同时归还和续借）
+  // 检查是否有重复的记录 ID
   QSet<int> Seen;
   for (int Rid : ReturnRecordIDs) {
     if (Seen.contains(Rid))
       return {ErrorCode::ValidationError, "重复选择了同一借阅记录"};
-    Seen.insert(Rid);
-  }
-  for (int Rid : RenewRecordIDs) {
-    if (Seen.contains(Rid))
-      return {ErrorCode::ValidationError, "同一记录不能同时归还和续借"};
     Seen.insert(Rid);
   }
 
@@ -631,50 +635,22 @@ LibrarySystem::returnAndRenewBooks(const QList<int> &ReturnRecordIDs,
       return {ErrorCode::InvalidStatus, "该书籍处于'未知状态'，无法归还"};
   }
 
-  // 预检续借记录
-  for (int Rid : RenewRecordIDs) {
-    int BrIdx = -1;
-    for (int I = 0; I < Borrows.size(); ++I) {
-      if (Borrows[I].ID == Rid) {
-        BrIdx = I;
-        break;
-      }
-    }
-    if (BrIdx < 0)
-      return {ErrorCode::NotFound,
-              "未找到借阅记录，记录ID: " + QString::number(Rid)};
-    if (Borrows[BrIdx].ReturnDate.isValid())
-      return {ErrorCode::InvalidStatus, "该借阅记录已归还，无法续借"};
-
-    int CopyIdx = -1;
-    for (int I = 0; I < Copies.size(); ++I) {
-      if (Copies[I].ID == Borrows[BrIdx].CopyId) {
-        CopyIdx = I;
-        break;
-      }
-    }
-    if (CopyIdx < 0)
-      return {ErrorCode::InternalError, "数据不一致：借阅记录关联的副本不存在"};
-    if (Copies[CopyIdx].Status == BookCopy::BS_Lost)
-      return {ErrorCode::InvalidStatus, "该书籍处于'遗失'状态，无法续借"};
-    if (Copies[CopyIdx].Status == BookCopy::BS_NonLendable)
-      return {ErrorCode::InvalidStatus, "该书籍处于'非外借书'状态，无法续借"};
-    if (Copies[CopyIdx].Status == BookCopy::BS_Unkown_Status)
-      return {ErrorCode::InvalidStatus, "该书籍处于'未知状态'，无法续借"};
-  }
-
   // 全部预检通过后执行（此时不会再因状态问题失败）
+  StateSnapshot Snap = takeSnapshot();
   for (int Rid : ReturnRecordIDs) {
     auto Res = returnBook(Rid);
-    if (!Res)
+    if (!Res) {
+      restoreSnapshot(Snap);
       return Res;
+    }
   }
-  for (int Rid : RenewRecordIDs) {
-    auto Res = renewBook(Rid);
-    if (!Res)
-      return Res;
+  auto SaveRes = saveToXlsx();
+  if (!SaveRes) {
+    // 保存失败：回滚内存，保证内存与文件一致，用户可关闭 Excel 后重试
+    restoreSnapshot(Snap);
+    return SaveRes;
   }
-  return saveToXlsx();
+  return {};
 }
 
 // ========== 查询某读者的借阅详情（未归还的） ==========
@@ -867,10 +843,16 @@ ErrorOr<void> LibrarySystem::addReader(const QString &Name,
   R.CardNumber = CardNumber;
   R.PhoneNumber = PhoneNumber;
   R.IsInactive = false;
+  StateSnapshot Snap = takeSnapshot();
   Readers.append(R);
   CardToReaderIdx[CardNumber] = Readers.size() - 1;
 
-  return saveToXlsx();
+  auto SaveRes = saveToXlsx();
+  if (!SaveRes) {
+    restoreSnapshot(Snap);
+    return SaveRes;
+  }
+  return {};
 }
 
 ErrorOr<void> LibrarySystem::updateReader(int ID, const QString &Name,
@@ -900,40 +882,19 @@ ErrorOr<void> LibrarySystem::updateReader(int ID, const QString &Name,
       CardToReaderIdx[CardNumber] != Idx)
     return {ErrorCode::ValidationError, "卡号已被其他读者使用: " + CardNumber};
 
-  // 更新卡号索引
-  QString OldCard = Readers[Idx].CardNumber;
-  CardToReaderIdx.remove(OldCard);
-
+  StateSnapshot Snap = takeSnapshot();
   Readers[Idx].Name = Name;
   Readers[Idx].CardNumber = CardNumber;
   Readers[Idx].PhoneNumber = PhoneNumber;
   Readers[Idx].IsInactive = IsInactive;
-  CardToReaderIdx[CardNumber] = Idx;
+  rebuildReaderIndex();
 
-  return saveToXlsx();
-}
-
-ErrorOr<void> LibrarySystem::deleteReader(int ID) {
-  // 检查是否有未归还的借阅记录
-  for (const auto &Br : std::as_const(Borrows)) {
-    if (Br.ReaderId == ID && !Br.ReturnDate.isValid())
-      return {ErrorCode::InvalidStatus, "该读者有未归还的图书，无法删除"};
+  auto SaveRes = saveToXlsx();
+  if (!SaveRes) {
+    restoreSnapshot(Snap);
+    return SaveRes;
   }
-
-  int Idx = -1;
-  for (int I = 0; I < Readers.size(); ++I) {
-    if (Readers[I].ID == ID) {
-      Idx = I;
-      break;
-    }
-  }
-  if (Idx < 0)
-    return {ErrorCode::NotFound, "读者不存在"};
-
-  CardToReaderIdx.remove(Readers[Idx].CardNumber);
-  Readers.removeAt(Idx);
-
-  return saveToXlsx();
+  return {};
 }
 
 // ========== 催还查询 ==========

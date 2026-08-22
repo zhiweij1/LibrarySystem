@@ -6,6 +6,12 @@
 #include <QHeaderView>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QShowEvent>
+
+void QueryBookForm::showEvent(QShowEvent *Event) {
+  QWidget::showEvent(Event);
+  loadData(); // 借还操作后切回本页时刷新为最新状态
+}
 
 QueryBookForm::QueryBookForm(QWidget *Parent)
     : QWidget(Parent), UI(new Ui::QueryBookForm) {

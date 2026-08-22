@@ -76,6 +76,7 @@ int main(int argc, char *argv[]) {
                            : QFileInfo(XlsxPath).absolutePath(),
         "Excel 文件 (*.xlsx)");
     if (XlsxPath.isEmpty()) {
+      OutFilePtr = nullptr; // 先断开日志句柄，防止 exit 期间悬垂写入
       delete OutFile;
       exit(0); // 用户取消
     }
